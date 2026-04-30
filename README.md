@@ -24,7 +24,7 @@
 | 功能 | 说明 |
 |------|------|
 | **三协议兼容** | 同一后端同时暴露 OpenAI / Anthropic Messages / Google Gemini 三种 API 格式 |
-| **Tool Calling** | Qwen3 模型原生支持 Function Calling，工具调用通过上下文传递，模型自动识别并生成结构化调用 |
+| **Tool Calling** | Qwen3.x 模型原生支持 Function Calling，工具调用通过上下文传递，模型自动识别并生成结构化调用 |
 | **多账号轮询** | 最近最少使用 (LRU) 调度 + 失败冷却机制 + 自动故障转移 |
 | **自动刷新** | 用户名密码登录，每 6 小时自动重新登录刷新 JWT Token |
 | **流式输出** | 完整 SSE 流式响应，兼容 `stream: true` |

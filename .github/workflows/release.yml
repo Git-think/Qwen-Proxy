@@ -28,8 +28,12 @@ jobs:
       - name: Get previous version
         id: previous_version
         run: |
-          git show HEAD~1:package.json > old_package.json
-          echo "version=$(jq -r .version old_package.json)" >> $GITHUB_OUTPUT
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            git show HEAD~1:package.json > old_package.json
+            echo "version=$(jq -r .version old_package.json)" >> $GITHUB_OUTPUT
+          else
+            echo "version=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Get current version
         id: current_version
@@ -64,7 +68,7 @@ jobs:
             -d "{\"contents\":[{\"parts\":[{\"text\": \"$prompt\"}]}]}" \
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${{ env.GEMINI_API_KEY }}")
             
-          changelog=$(echo "$response" | jq -r '.candidates.content.parts.text')
+          changelog=$(echo "$response" | jq -r '.candidates[0].content.parts[0].text')
           
           if [ -z "$changelog" ] || [ "$changelog" == "null" ]; then
             echo "generated=false" >> $GITHUB_OUTPUT
