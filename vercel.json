@@ -1,4 +1,5 @@
 {
+  "framework": null,
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "webui/dist",
   "installCommand": "npm install && cd webui && npm install",

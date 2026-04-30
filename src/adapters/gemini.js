@@ -75,6 +75,7 @@ function geminiToOpenAI(geminiBody, urlModel) {
   let model = urlModel || 'qwen3-235b-a22b'
   const hasSearch = (geminiBody.tools || []).some(t =>
     t.google_search || t.googleSearch || t.google_search_retrieval || t.googleSearchRetrieval
+    || (t.type === 'function' && t.function && t.function.name === 'googleSearch')
   )
   if (hasSearch && !model.includes('-search')) {
     model = model + '-search'
