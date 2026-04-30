@@ -1,0 +1,14 @@
+{
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "webui/dist",
+  "installCommand": "npm install && cd webui && npm install",
+  "rewrites": [
+    { "source": "/v1/:path*", "destination": "/api/index" },
+    { "source": "/v1beta/:path*", "destination": "/api/index" },
+    { "source": "/api/:path*", "destination": "/api/index" },
+    { "source": "/anthropic/:path*", "destination": "/api/index" },
+    { "source": "/verify", "destination": "/api/index" },
+    { "source": "/health", "destination": "/api/index" },
+    { "source": "/((?!.*\\.).*)", "destination": "/index.html" }
+  ]
+}

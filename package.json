@@ -1,0 +1,34 @@
+{
+  "name": "qwen2api",
+  "version": "1.0.0",
+  "description": "OpenAI-compatible API proxy for Qwen AI - supports Vercel serverless and Docker deployment",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/start.js",
+    "dev": "nodemon src/start.js",
+    "build:webui": "cd webui && npm install && npm run build",
+    "vercel-build": "cd webui && npm install && npm run build"
+  },
+  "keywords": ["qwen", "openai", "api", "proxy", "serverless", "vercel"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ali-oss": "^6.22.0",
+    "axios": "^1.11.0",
+    "body-parser": "^1.20.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "form-data": "^4.0.2",
+    "https-proxy-agent": "^7.0.6",
+    "jwt-decode": "^4.0.0",
+    "mime-types": "^3.0.1",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,44 @@
+# ───── Node / NPM ─────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ───── Env / Secrets ─────
+.env
+.env.local
+.env.*.local
+*.pem
+
+# ───── Build outputs ─────
+dist/
+webui/dist/
+build/
+
+# ───── Runtime data ─────
+data/
+logs/
+*.log
+
+# ───── Vercel ─────
+.vercel
+.vercel.json.bak
+
+# ───── OS ─────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ───── Editor / IDE ─────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ───── Tooling caches ─────
+.opencode/
+.sisyphus/
+.claude/
+.cache/
+.turbo/

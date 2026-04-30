@@ -1,0 +1,10 @@
+node_modules
+.env
+data
+logs
+*.log
+.git
+.gitignore
+.vercel
+README.md
+docker-compose.yml
