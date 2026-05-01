@@ -19,12 +19,23 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
 
     const paginatedAccounts = allAccounts.slice(start, start + pageSize)
 
-    const accounts = paginatedAccounts.map(account => ({
-      email: account.email,
-      password: account.password,
-      token: account.token,
-      expires: account.expires
-    }))
+    const nowSec = Math.floor(Date.now() / 1000)
+    const accounts = paginatedAccounts.map(account => {
+      const hasToken = !!account.token
+      const expires = account.expires || 0
+      // expires here is unix seconds from JWT. Compute readable ms timestamp.
+      const tokenExpiry = expires > 0 ? expires * 1000 : null
+      const isValid = hasToken && expires > nowSec
+      return {
+        email: account.email,
+        password: account.password,
+        token: account.token || '',
+        expires,
+        tokenExpiry,
+        isValid,
+        lastLoginError: account.lastLoginError || null,
+      }
+    })
 
     res.json({ total, page, pageSize, data: accounts })
   } catch (error) {

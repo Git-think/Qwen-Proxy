@@ -111,30 +111,42 @@ class Account {
     }
 
     /**
-     * Validate and clean invalid tokens
+     * Validate tokens and try to recover invalid ones, but ALWAYS keep
+     * accounts in the list. A failed login (transient network blip, 5xx,
+     * captcha) leaves account.token empty + expires=0; the admin UI can
+     * see those entries and trigger /api/refreshAccount to retry. This
+     * prevents the account list from silently shrinking on transient
+     * errors — the previous behavior dropped failed entries entirely.
      * @private
      */
     async _validateAndCleanTokens() {
-        const validAccounts = []
-
         for (const account of this.accountTokens) {
             if (account.token && this.tokenManager.validateToken(account.token)) {
-                validAccounts.push(account)
-            } else if (account.email && account.password) {
-                logger.info(`Token invalid, attempting re-login: ${account.email}`, 'TOKEN')
-                const newToken = await this.tokenManager.login(account.email, account.password)
-                if (newToken) {
-                    const decoded = this.tokenManager.validateToken(newToken)
-                    if (decoded) {
-                        account.token = newToken
-                        account.expires = decoded.exp
-                        validAccounts.push(account)
-                    }
+                continue
+            }
+            if (!account.email || !account.password) {
+                // No credentials available — leave as-is so the operator
+                // can at least see the orphaned entry and act on it.
+                continue
+            }
+            logger.info(`Token invalid, attempting re-login: ${account.email}`, 'TOKEN')
+            const newToken = await this.tokenManager.login(account.email, account.password)
+            if (newToken) {
+                const decoded = this.tokenManager.validateToken(newToken)
+                if (decoded) {
+                    account.token = newToken
+                    account.expires = decoded.exp
+                    delete account.lastLoginError
+                    continue
                 }
             }
+            // Login failed — KEEP the entry but mark token empty so the
+            // rotator skips it. Frontend can show "未登录" and call
+            // /api/refreshAccount to retry on demand.
+            account.token = ''
+            account.expires = 0
+            account.lastLoginError = Date.now()
         }
-
-        this.accountTokens = validAccounts
     }
 
     /**

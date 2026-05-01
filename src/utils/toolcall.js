@@ -52,24 +52,31 @@ const TOOL_ALIAS_OUT = {
 const TOOL_ALIAS_IN = Object.fromEntries(
   Object.entries(TOOL_ALIAS_OUT).map(([k, v]) => [v, k])
 )
-const OBFUSCATE_PREFIX = 't_'
+
+// NOTE on the dropped `t_` catch-all prefix:
+// An earlier revision prefixed every non-aliased tool name with `t_` to
+// dodge Qwen's internal tool-name validator. That worked on smaller Qwen
+// variants (e.g. qwen3.6-27b) but qwen3.6-plus had been trained to treat
+// `t_` as a tool namespace, and would refuse with "Tool t_X does not
+// exists." even though our prompt declared the tool. We now pass
+// non-aliased names through verbatim — Qwen does NOT see req.body.tools
+// (chat-middleware strips it) so there's no backend validator to dodge.
 
 function obfuscateToolName(name) {
   if (!name || typeof name !== 'string') return name
   if (Object.prototype.hasOwnProperty.call(TOOL_ALIAS_OUT, name)) return TOOL_ALIAS_OUT[name]
-  // Don't double-encode if already obfuscated (alias output or t_-prefixed)
+  // Already an aliased upstream id — leave untouched.
   if (Object.prototype.hasOwnProperty.call(TOOL_ALIAS_IN, name)) return name
-  if (name.startsWith(OBFUSCATE_PREFIX)) return name
-  return OBFUSCATE_PREFIX + name
+  return name
 }
 
 function deobfuscateToolName(name) {
   if (!name || typeof name !== 'string') return name
   if (Object.prototype.hasOwnProperty.call(TOOL_ALIAS_IN, name)) return TOOL_ALIAS_IN[name]
-  if (name.startsWith(OBFUSCATE_PREFIX)) return name.slice(OBFUSCATE_PREFIX.length)
-  // Not obfuscated (model may have hallucinated a literal short name despite
-  // the prompt). Pass through; the caller can decide what to do with an
-  // unrecognized name.
+  // Backward compat: parse legacy `t_` prefix that historical responses
+  // may have produced, so a stale prompt cache from an older deploy
+  // doesn't suddenly look broken.
+  if (name.startsWith('t_')) return name.slice(2)
   return name
 }
 
