@@ -4,6 +4,7 @@ const { sendChatRequest } = require('../utils/request.js')
 const accountManager = require('../utils/account.js')
 const config = require('../config/index.js')
 const { logger } = require('../utils/logger')
+const { createSieve, parseToolCallsFromText } = require('../utils/toolcall.js')
 
 /**
  * Set response headers
@@ -44,7 +45,7 @@ const getImageMarkdownListFromDelta = (delta) => {
 /**
  * Handle streaming response
  */
-const handleStreamResponse = async (res, response, enable_thinking, enable_web_search, requestBody = null) => {
+const handleStreamResponse = async (res, response, enable_thinking, enable_web_search, requestBody = null, toolcallEnabled = false) => {
     try {
         const message_id = generateUUID()
         const decoder = new TextDecoder('utf-8')
@@ -53,6 +54,11 @@ const handleStreamResponse = async (res, response, enable_thinking, enable_web_s
         let buffer = ''
         let emittedImageMarkdownSet = new Set()
         let pendingImageMarkdownList = []
+
+        // Tool-call sieve. Only created when the request was gated as
+        // tool-call enabled by the middleware.
+        const sieve = toolcallEnabled ? createSieve() : null
+        let toolCallsEmitted = false
 
         let totalTokens = {
             prompt_tokens: 0,
@@ -82,6 +88,12 @@ const handleStreamResponse = async (res, response, enable_thinking, enable_web_s
                 }]
             }
             res.write(`data: ${JSON.stringify(chunk)}\n\n`)
+        }
+
+        const writeToolCallDeltas = (deltas) => {
+            if (!Array.isArray(deltas) || deltas.length === 0) return
+            toolCallsEmitted = true
+            writeChunk({ tool_calls: deltas })
         }
 
         response.on('data', async (chunk) => {
@@ -182,7 +194,13 @@ const handleStreamResponse = async (res, response, enable_thinking, enable_web_s
                             }
                         }
                         currentPhase = 'answer'
-                        writeChunk({ "content": content })
+                        if (sieve) {
+                            const out = sieve.push(content)
+                            if (out.textDelta) writeChunk({ "content": out.textDelta })
+                            if (out.toolCallsDelta) writeToolCallDeltas(out.toolCallsDelta)
+                        } else {
+                            writeChunk({ "content": content })
+                        }
                     }
                 } catch (error) {
                     logger.error('Stream data processing error', 'CHAT', '', error)
@@ -192,6 +210,13 @@ const handleStreamResponse = async (res, response, enable_thinking, enable_web_s
 
         response.on('end', async () => {
             try {
+                // Flush any pending content held by the tool-call sieve
+                if (sieve) {
+                    const out = sieve.flush()
+                    if (out.textDelta) writeChunk({ "content": out.textDelta })
+                    if (out.toolCallsDelta) writeToolCallDeltas(out.toolCallsDelta)
+                }
+
                 // Append search info for non-thinking mode
                 if ((config.outThink === false || !enable_thinking) && web_search_info && config.searchInfoMode === "text") {
                     const webSearchTable = await accountManager.generateMarkdownTable(web_search_info, "text")
@@ -206,12 +231,14 @@ const handleStreamResponse = async (res, response, enable_thinking, enable_web_s
                 totalTokens.completion_tokens = Math.max(0, totalTokens.completion_tokens || 0)
                 totalTokens.total_tokens = totalTokens.prompt_tokens + totalTokens.completion_tokens
 
+                const finishReason = toolCallsEmitted ? 'tool_calls' : 'stop'
+
                 // Finish chunk
                 res.write(`data: ${JSON.stringify({
                     "id": `chatcmpl-${message_id}`,
                     "object": "chat.completion.chunk",
                     "created": Math.round(new Date().getTime() / 1000),
-                    "choices": [{ "index": 0, "delta": {}, "finish_reason": "stop" }]
+                    "choices": [{ "index": 0, "delta": {}, "finish_reason": finishReason }]
                 })}\n\n`)
 
                 // Usage chunk
@@ -243,7 +270,7 @@ const handleStreamResponse = async (res, response, enable_thinking, enable_web_s
 /**
  * Handle non-streaming response (accumulate from stream)
  */
-const handleNonStreamResponse = async (res, response, enable_thinking, enable_web_search, model, requestBody = null) => {
+const handleNonStreamResponse = async (res, response, enable_thinking, enable_web_search, model, requestBody = null, toolcallEnabled = false) => {
     try {
         const decoder = new TextDecoder('utf-8')
         let buffer = ''
@@ -356,6 +383,17 @@ const handleNonStreamResponse = async (res, response, enable_thinking, enable_we
             message.reasoning_content = reasoningContent
         }
 
+        // Tool-call extraction. Only when the gate said the request has tools.
+        let finishReason = "stop"
+        if (toolcallEnabled && fullContent) {
+            const parsed = parseToolCallsFromText(fullContent)
+            if (parsed.toolCalls.length > 0) {
+                message.content = parsed.content
+                message.tool_calls = parsed.toolCalls
+                finishReason = "tool_calls"
+            }
+        }
+
         res.json({
             "id": `chatcmpl-${generateUUID()}`,
             "object": "chat.completion",
@@ -364,7 +402,7 @@ const handleNonStreamResponse = async (res, response, enable_thinking, enable_we
             "choices": [{
                 "index": 0,
                 "message": message,
-                "finish_reason": "stop"
+                "finish_reason": finishReason
             }],
             "usage": totalTokens
         })
@@ -392,10 +430,10 @@ const handleChatCompletion = async (req, res) => {
 
         if (stream) {
             setResponseHeaders(res, true)
-            await handleStreamResponse(res, response_data.response, enable_thinking, enable_web_search, req.body)
+            await handleStreamResponse(res, response_data.response, enable_thinking, enable_web_search, req.body, req.toolcall_enabled)
         } else {
             setResponseHeaders(res, false)
-            await handleNonStreamResponse(res, response_data.response, enable_thinking, enable_web_search, model, req.body)
+            await handleNonStreamResponse(res, response_data.response, enable_thinking, enable_web_search, model, req.body, req.toolcall_enabled)
         }
 
     } catch (error) {
