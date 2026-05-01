@@ -12,7 +12,7 @@ const endpoints = [
     description: '创建聊天补全，支持流式输出。兼容 OpenAI 格式。',
     auth: true,
     body: {
-      model: 'qwen-max',
+      model: 'qwen3.6-plus',
       messages: [{ role: 'user', content: 'Hello!' }],
       stream: false,
     },
@@ -32,17 +32,23 @@ const endpoints = [
     method: 'GET',
     path: '/v1/models',
     title: '模型列表',
-    description: '列出所有可用模型及其能力。',
+    description: '动态拉取 chat.qwen.ai 当前可用的全部模型，包含基础模型与各种后缀变体（-thinking / -search / -image / -video / -image-edit）。',
     auth: true,
     body: null,
     response: {
       object: 'list',
       data: [
-        { id: 'qwen-max', object: 'model', owned_by: 'qwen' },
-        { id: 'qwen-plus', object: 'model', owned_by: 'qwen' },
+        { id: 'qwen3.6-plus', object: 'model', owned_by: 'qwen' },
+        { id: 'qwen3.6-plus-thinking', object: 'model', owned_by: 'qwen' },
+        { id: 'qwen3.6-plus-search', object: 'model', owned_by: 'qwen' },
       ],
     },
-    notes: ['动态获取 Qwen AI 可用模型'],
+    notes: [
+      '运行时从 chat.qwen.ai 动态获取，并按需缓存（首次调用后保留）',
+      'OpenAI 客户端可直接用作 `models.list()`',
+      'Gemini / Anthropic 客户端可借此发现可用模型 ID 后再构造各自请求',
+      '响应中包含基础模型与 `-thinking`、`-search` 后缀版本；前端选择器会自动去重显示基础模型',
+    ],
   },
   {
     category: 'openai',
@@ -52,7 +58,7 @@ const endpoints = [
     description: '根据文本提示生成图片。兼容 OpenAI 格式。',
     auth: true,
     body: {
-      model: 'qwen-max-image',
+      model: 'qwen3.6-plus-image',
       prompt: 'A beautiful sunset over mountains',
       n: 1,
       size: '1024x1024',
@@ -70,7 +76,7 @@ const endpoints = [
     title: '图片编辑',
     description: '通过文本指令编辑图片。支持 multipart 上传。',
     auth: true,
-    body: { image: '<file>', prompt: 'Make the sky blue', model: 'qwen-max-image-edit' },
+    body: { image: '<file>', prompt: 'Make the sky blue', model: 'qwen3.6-plus-image-edit' },
     response: { created: 1700000000, data: [{ url: 'https://...' }] },
     notes: ['Multipart form-data 上传', '使用带 `-image-edit` 后缀的模型'],
   },
@@ -81,7 +87,7 @@ const endpoints = [
     title: '视频生成',
     description: '根据文本提示生成视频。',
     auth: true,
-    body: { model: 'qwen-max-video', prompt: 'A cat playing piano' },
+    body: { model: 'qwen3.6-plus-video', prompt: 'A cat playing piano' },
     response: { data: [{ url: 'https://...' }] },
     notes: ['使用带 `-video` 后缀的模型', '处理时间可能较长'],
   },
@@ -96,7 +102,7 @@ const endpoints = [
     auth: true,
     authHeader: 'x-api-key',
     body: {
-      model: 'qwen3-235b-a22b',
+      model: 'qwen3.6-plus',
       max_tokens: 1024,
       messages: [{ role: 'user', content: 'Hello, Claude' }],
       stream: false,
@@ -105,7 +111,7 @@ const endpoints = [
       id: 'msg_xxx',
       type: 'message',
       role: 'assistant',
-      model: 'qwen3-235b-a22b',
+      model: 'qwen3.6-plus',
       content: [{ type: 'text', text: 'Hello!' }],
       stop_reason: 'end_turn',
       usage: { input_tokens: 10, output_tokens: 5 },
@@ -125,7 +131,7 @@ const endpoints = [
     auth: true,
     authHeader: 'x-api-key',
     body: {
-      model: 'qwen3-235b-a22b',
+      model: 'qwen3.6-plus',
       max_tokens: 1024,
       messages: [{ role: 'user', content: 'Hi' }],
     },
@@ -160,7 +166,7 @@ const endpoints = [
       usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
     },
     notes: [
-      '路径中 `{model}` 替换为模型名，例如 `qwen3-235b-a22b`',
+      '路径中 `{model}` 替换为模型名，例如 `qwen3.6-plus`',
       '同时支持 `/v1/models/{model}:generateContent`',
       '支持 `x-goog-api-key` 头、查询参数 `?key=...`、`Authorization: Bearer ...`',
     ],
@@ -295,7 +301,7 @@ function EndpointCard({ endpoint }) {
   const cat = categoryMeta[endpoint.category] || categoryMeta.public
 
   // 路径中的 {model} 占位符不能直接发请求，需要特殊处理
-  const tryablePath = endpoint.path.replace('{model}', 'qwen3-235b-a22b')
+  const tryablePath = endpoint.path.replace('{model}', 'qwen3.6-plus')
   const isTryable = !endpoint.path.includes('{')
 
   const handleTry = async () => {

@@ -240,7 +240,7 @@ const isThinkingEnabled = (model, enable_thinking, thinking_budget, reasoning_ef
  * @returns {Promise<string>} Parsed model name
  */
 const parserModel = async (model) => {
-    if (!model) return 'qwen3-coder-plus'
+    if (!model) return 'qwen3.6-plus'
 
     try {
         const { baseModel } = splitModelSuffix(model)
@@ -250,7 +250,7 @@ const parserModel = async (model) => {
         return matchedModel?.id || baseModel
     } catch (e) {
         const { baseModel } = splitModelSuffix(model)
-        return baseModel || 'qwen3-coder-plus'
+        return baseModel || 'qwen3.6-plus'
     }
 }
 

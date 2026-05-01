@@ -121,7 +121,7 @@ function geminiToOpenAI(geminiBody, urlModel) {
   }
 
   // Search toggle
-  let model = urlModel || 'qwen3-235b-a22b'
+  let model = urlModel || 'qwen3.6-plus'
   const hasSearch = (geminiBody.tools || []).some(t =>
     t.google_search || t.googleSearch || t.google_search_retrieval || t.googleSearchRetrieval
     || (t.type === 'function' && t.function && t.function.name === 'googleSearch')

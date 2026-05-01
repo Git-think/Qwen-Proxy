@@ -47,7 +47,7 @@ const processRequestBody = async (req, res, next) => {
       "stream": true,
       "incremental_output": true,
       "chat_type": "t2t",
-      "model": "qwen3-235b-a22b",
+      "model": "qwen3.6-plus",
       "messages": [],
       "session_id": generateUUID(),
       "id": generateUUID(),

@@ -199,26 +199,35 @@ export default function Vercel() {
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-red-300">未配置 Vercel 连接，请设置以下环境变量：</p>
+              <p className="text-sm text-red-300">未配置 Vercel 连接，请在 Vercel Dashboard 项目设置中添加以下环境变量后重新部署：</p>
               <div className="space-y-2 text-xs font-mono">
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded ${status?.hasToken ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
                     VERCEL_TOKEN
                   </span>
-                  <span className="text-slate-500">— 在 https://vercel.com/account/tokens 创建</span>
+                  <span className="text-slate-500">— 在 <a href="https://vercel.com/account/tokens" target="_blank" rel="noreferrer" className="text-accent-glow hover:underline">vercel.com/account/tokens</a> 创建 Personal Token</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded ${status?.hasProjectId ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
                     VERCEL_PROJECT_ID
                   </span>
-                  <span className="text-slate-500">— 项目 Settings → General</span>
+                  <span className="text-slate-500">— 项目 Settings → General → Project ID（Vercel 不在 runtime 自动注入此变量，必须手动配置）</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 rounded bg-slate-500/15 text-slate-400">
                     VERCEL_TEAM_ID
                   </span>
-                  <span className="text-slate-500">— 可选，个人账号留空</span>
+                  <span className="text-slate-500">— 仅团队账户需要；个人账户留空</span>
                 </div>
+              </div>
+              <div className="mt-4 p-3 rounded-lg bg-amber-500/[0.08] border border-amber-500/[0.15] text-xs text-amber-200/90 leading-relaxed">
+                <div className="font-semibold mb-1">配置步骤：</div>
+                <ol className="space-y-0.5 list-decimal list-inside">
+                  <li>在 Vercel Dashboard 打开本项目 → Settings → Environment Variables</li>
+                  <li>添加上述变量（至少 VERCEL_TOKEN 和 VERCEL_PROJECT_ID），三个 target 全选</li>
+                  <li>回到 Deployments → 最新一条 → Redeploy</li>
+                  <li>页面刷新后即可在此管理所有环境变量并触发重新部署</li>
+                </ol>
               </div>
             </div>
           )}

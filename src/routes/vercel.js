@@ -12,6 +12,22 @@ function getVercelConfig() {
   }
 }
 
+// Public lightweight info endpoint. Returns boolean flags only — no values.
+// Used by the frontend Sidebar to decide whether to show the Vercel link
+// without requiring the admin API key. Mounted under /api/vercel/info.
+router.get('/vercel/info', (req, res) => {
+  const { vercelToken, projectId, teamId } = getVercelConfig()
+  res.json({
+    isVercel: !!(process.env.VERCEL),
+    vercelEnv: process.env.VERCEL_ENV || null,
+    vercelUrl: process.env.VERCEL_URL || null,
+    configured: !!(vercelToken && projectId),
+    hasToken: !!vercelToken,
+    hasProjectId: !!projectId,
+    hasTeamId: !!teamId,
+  })
+})
+
 router.get('/vercel/status', adminKeyVerify, async (req, res) => {
   const { vercelToken, projectId, teamId } = getVercelConfig()
   res.json({

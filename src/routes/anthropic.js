@@ -40,7 +40,7 @@ const anthropicKeyVerify = (req, res, next) => {
 const handleAnthropicMessages = async (req, res) => {
   try {
     const anthropicBody = req.body
-    const requestedModel = anthropicBody.model || 'qwen3-235b-a22b'
+    const requestedModel = anthropicBody.model || 'qwen3.6-plus'
     const isStream = anthropicBody.stream || false
 
     // Convert Anthropic request to OpenAI format

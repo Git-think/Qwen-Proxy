@@ -40,3 +40,19 @@ export function getSelectedModel() {
 export function setSelectedModel(model) {
   localStorage.setItem(STORAGE_KEYS.SELECTED_MODEL, model)
 }
+
+export function getEnableThinking() {
+  return localStorage.getItem(STORAGE_KEYS.ENABLE_THINKING) === '1'
+}
+
+export function setEnableThinking(on) {
+  localStorage.setItem(STORAGE_KEYS.ENABLE_THINKING, on ? '1' : '0')
+}
+
+export function getEnableSearch() {
+  return localStorage.getItem(STORAGE_KEYS.ENABLE_SEARCH) === '1'
+}
+
+export function setEnableSearch(on) {
+  localStorage.setItem(STORAGE_KEYS.ENABLE_SEARCH, on ? '1' : '0')
+}

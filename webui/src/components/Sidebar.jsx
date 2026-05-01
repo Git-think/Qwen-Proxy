@@ -39,10 +39,14 @@ export default function Sidebar({ collapsed, onToggle }) {
   const [isVercel, setIsVercel] = useState(false)
 
   useEffect(() => {
-    fetch(API_ENDPOINTS.SERVICE_INFO)
-      .then(res => res.json())
+    // /api/vercel/info is a public endpoint (no auth) that returns boolean
+    // flags about the Vercel runtime. Using it instead of `/` avoids
+    // collisions with vercel.json's SPA rewrite (which sends `/` to
+    // index.html on Vercel deployments).
+    fetch(API_ENDPOINTS.VERCEL_INFO)
+      .then(res => (res.ok ? res.json() : null))
       .then(data => {
-        if (data.isVercel) setIsVercel(true)
+        if (data && data.isVercel) setIsVercel(true)
       })
       .catch(() => {})
   }, [])

@@ -134,6 +134,20 @@ curl "http://localhost:3000/v1beta/models/qwen3.6-plus:generateContent" \
 
 `DATA_SAVE_MODE` 默认为 `none`，所有状态保存在内存中，冷启动时自动登录获取 Token。
 
+#### 启用 Vercel 同步面板（可选）
+
+部署后可在 Web 面板里直接管理 Vercel 环境变量并一键重新部署，需要再添加 2 个环境变量：
+
+| 变量 | 必需 | 获取方式 |
+|---|---|---|
+| `VERCEL_TOKEN` | 是 | [vercel.com/account/tokens](https://vercel.com/account/tokens) 创建 Personal Token |
+| `VERCEL_PROJECT_ID` | 是 | 项目 Settings → General → Project ID |
+| `VERCEL_TEAM_ID` | 否 | 仅团队账户需要；个人账户留空 |
+
+> Vercel 在 runtime 不会自动注入 `VERCEL_PROJECT_ID`（不同于 `VERCEL` / `VERCEL_ENV` / `VERCEL_URL`），必须手动在 Settings → Environment Variables 里添加。
+
+配置完成后重新部署一次，左侧导航会出现 **Vercel 同步** 入口。
+
 ### Docker 部署
 
 ```bash
@@ -342,7 +356,7 @@ Authorization: Bearer sk-your-key
 
 模型后缀：无（标准） / `-thinking`（思维链） / `-search`（搜索） / `-thinking-search` / `-image` / `-video` / `-image-edit`
 
-常用基础模型示例：`qwen3.6-plus` / `qwen3-235b-a22b` / `qwen3-coder-plus` / `qwen-max`。完整列表通过 `GET /v1/models` 动态获取。
+常用基础模型示例：`qwen3.6-plus`。完整列表通过 `GET /v1/models` 动态获取。
 
 ### Anthropic Messages 格式
 

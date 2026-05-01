@@ -26,10 +26,22 @@ export default function ModelSelector({ value, onChange }) {
     setLoading(true)
     try {
       const data = await fetchModels()
-      setModels(data.map(m => m.id))
+      // Strip -thinking / -search suffixes (controlled by toggles in the
+      // chat page) and dedupe down to base model ids.
+      const SUFFIX_RE = /(?:-(?:thinking|search))+$/
+      const seen = new Set()
+      const baseIds = []
+      for (const m of data) {
+        const base = String(m.id || '').replace(SUFFIX_RE, '')
+        if (base && !seen.has(base)) {
+          seen.add(base)
+          baseIds.push(base)
+        }
+      }
+      setModels(baseIds.length > 0 ? baseIds : ['qwen3.6-plus'])
     } catch {
       // fallback
-      setModels(['qwen-max', 'qwen-plus', 'qwen-turbo'])
+      setModels(['qwen3.6-plus'])
     } finally {
       setLoading(false)
     }

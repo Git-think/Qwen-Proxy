@@ -7,6 +7,10 @@ import {
   setActiveConversationId,
   getSelectedModel,
   setSelectedModel as saveSelectedModel,
+  getEnableThinking,
+  setEnableThinking as saveEnableThinking,
+  getEnableSearch,
+  setEnableSearch as saveEnableSearch,
 } from '../utils/storage'
 import { DEFAULT_MODEL } from '../utils/constants'
 
@@ -58,6 +62,8 @@ export function useChat() {
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingReasoning, setStreamingReasoning] = useState('')
   const [selectedModel, setSelectedModel] = useState(() => getSelectedModel() || DEFAULT_MODEL)
+  const [enableThinking, setEnableThinkingState] = useState(() => getEnableThinking())
+  const [enableSearch, setEnableSearchState] = useState(() => getEnableSearch())
   const abortRef = useRef(null)
 
   const activeConversation = conversations.find(c => c.id === activeId) || null
@@ -69,6 +75,32 @@ export function useChat() {
     setSelectedModel(model)
     saveSelectedModel(model)
   }, [])
+
+  const toggleThinking = useCallback(() => {
+    setEnableThinkingState(v => {
+      const next = !v
+      saveEnableThinking(next)
+      return next
+    })
+  }, [])
+
+  const toggleSearch = useCallback(() => {
+    setEnableSearchState(v => {
+      const next = !v
+      saveEnableSearch(next)
+      return next
+    })
+  }, [])
+
+  // Compose the model id sent to the server: append -thinking / -search
+  // suffixes based on the toggle state. Selectable models in the UI are
+  // always base ids (suffixes are stripped in ModelSelector).
+  const composeModel = useCallback(() => {
+    let m = (selectedModel || DEFAULT_MODEL).replace(/(?:-(?:thinking|search))+$/, '')
+    if (enableThinking) m += '-thinking'
+    if (enableSearch) m += '-search'
+    return m
+  }, [selectedModel, enableThinking, enableSearch])
 
   const newChat = useCallback(() => {
     const conv = createConversation()
@@ -101,7 +133,7 @@ export function useChat() {
     try {
       await streamChat(
         messagesForApi,
-        selectedModel,
+        composeModel(),
         (chunk, type) => {
           if (type === 'reasoning') {
             fullReasoning += chunk
@@ -124,19 +156,13 @@ export function useChat() {
       setStreamingReasoning('')
       abortRef.current = null
     }
-  }, [selectedModel])
+  }, [composeModel])
 
   const sendMessage = useCallback(async (content, attachments = []) => {
-    let convId = activeId
-    let convs = conversations
-
-    if (!convId) {
-      const conv = createConversation(content.slice(0, 50))
-      convs = [conv, ...convs]
-      convId = conv.id
-      setConversations(convs)
-      setActiveId(convId)
-    }
+    // Require an explicit "new chat" before sending — no implicit creation.
+    if (!activeId) return
+    const convId = activeId
+    const convs = conversations
 
     const userMessage = {
       role: 'user',
@@ -304,6 +330,10 @@ export function useChat() {
     streamingReasoning,
     selectedModel,
     changeModel,
+    enableThinking,
+    enableSearch,
+    toggleThinking,
+    toggleSearch,
     newChat,
     selectConversation,
     deleteConversation,
