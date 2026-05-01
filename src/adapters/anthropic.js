@@ -26,38 +26,65 @@ function anthropicToOpenAI(anthropicBody) {
       continue
     }
 
-    // content blocks array
-    if (Array.isArray(msg.content)) {
-      const openaiContent = []
+    if (!Array.isArray(msg.content)) continue
 
+    // Anthropic packs tool_use into assistant messages, tool_result into user
+    // messages, sometimes alongside text/image. OpenAI splits these:
+    //   assistant.text/images → assistant message with content (+ tool_calls)
+    //   tool_result blocks    → separate role:'tool' message per result
+    if (role === 'assistant') {
+      const openaiContent = []
+      const toolCalls = []
       for (const block of msg.content) {
         if (block.type === 'text') {
           openaiContent.push({ type: 'text', text: block.text })
         } else if (block.type === 'image') {
-          // base64 image
           const dataUrl = `data:${block.source.media_type};base64,${block.source.data}`
           openaiContent.push({ type: 'image_url', image_url: { url: dataUrl } })
         } else if (block.type === 'tool_use') {
-          // assistant tool_use → text representation
-          openaiContent.push({ type: 'text', text: `[Tool Call: ${block.name}(${JSON.stringify(block.input)})]` })
-        } else if (block.type === 'tool_result') {
-          // user tool_result → text representation
-          const resultText = typeof block.content === 'string' ? block.content :
-            (Array.isArray(block.content) ? block.content.map(c => c.text || '').join('') : JSON.stringify(block.content))
-          openaiContent.push({ type: 'text', text: `[Tool Result: ${resultText}]` })
+          toolCalls.push({
+            id: block.id,
+            type: 'function',
+            function: { name: block.name, arguments: JSON.stringify(block.input || {}) }
+          })
         } else if (block.type === 'thinking') {
-          // thinking block round-trip, skip
           continue
         }
       }
-
-      // Simplify single text block to string
+      const m = { role: 'assistant' }
       if (openaiContent.length === 1 && openaiContent[0].type === 'text') {
-        messages.push({ role, content: openaiContent[0].text })
+        m.content = openaiContent[0].text
       } else if (openaiContent.length > 0) {
-        messages.push({ role, content: openaiContent })
+        m.content = openaiContent
+      } else {
+        m.content = ''
+      }
+      if (toolCalls.length > 0) m.tool_calls = toolCalls
+      messages.push(m)
+      continue
+    }
+
+    // role === 'user': split tool_result blocks into separate role:'tool' msgs
+    const userText = []
+    const toolResults = []
+    for (const block of msg.content) {
+      if (block.type === 'text') {
+        userText.push({ type: 'text', text: block.text })
+      } else if (block.type === 'image') {
+        const dataUrl = `data:${block.source.media_type};base64,${block.source.data}`
+        userText.push({ type: 'image_url', image_url: { url: dataUrl } })
+      } else if (block.type === 'tool_result') {
+        const resultText = typeof block.content === 'string' ? block.content :
+          (Array.isArray(block.content) ? block.content.map(c => c.text || JSON.stringify(c)).join('') : JSON.stringify(block.content))
+        toolResults.push({ role: 'tool', tool_call_id: block.tool_use_id, content: resultText })
       }
     }
+    if (userText.length === 1 && userText[0].type === 'text') {
+      messages.push({ role: 'user', content: userText[0].text })
+    } else if (userText.length > 0) {
+      messages.push({ role: 'user', content: userText })
+    }
+    for (const t of toolResults) messages.push(t)
   }
 
   // thinking config conversion
@@ -76,7 +103,28 @@ function anthropicToOpenAI(anthropicBody) {
     // type === 'disabled' → default no thinking
   }
 
-  return {
+  // tools and tool_choice
+  let tools = undefined
+  if (Array.isArray(anthropicBody.tools) && anthropicBody.tools.length > 0) {
+    tools = anthropicBody.tools.map(t => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description || '',
+        parameters: t.input_schema || { type: 'object', properties: {} }
+      }
+    }))
+  }
+  let tool_choice = undefined
+  const tc = anthropicBody.tool_choice
+  if (tc && typeof tc === 'object') {
+    if (tc.type === 'auto') tool_choice = 'auto'
+    else if (tc.type === 'any') tool_choice = 'required'
+    else if (tc.type === 'tool' && tc.name) tool_choice = { type: 'function', function: { name: tc.name } }
+    else if (tc.type === 'none') tool_choice = 'none'
+  }
+
+  const out = {
     model: anthropicBody.model || 'qwen3-235b-a22b',
     messages,
     max_tokens: anthropicBody.max_tokens,
@@ -88,6 +136,9 @@ function anthropicToOpenAI(anthropicBody) {
     reasoning_effort,
     stop: anthropicBody.stop_sequences,
   }
+  if (tools) out.tools = tools
+  if (tool_choice !== undefined) out.tool_choice = tool_choice
+  return out
 }
 
 /**
@@ -114,13 +165,41 @@ function openaiToAnthropicResponse(openaiResponse, model) {
     })
   }
 
+  // tool_calls → tool_use blocks
+  let hasToolUse = false
+  if (choice && choice.message && Array.isArray(choice.message.tool_calls)) {
+    for (const tc of choice.message.tool_calls) {
+      let input = {}
+      try { input = JSON.parse(tc.function.arguments || '{}') } catch { /* keep empty */ }
+      content.push({
+        type: 'tool_use',
+        id: tc.id || `toolu_${Date.now()}`,
+        name: tc.function.name,
+        input
+      })
+      hasToolUse = true
+    }
+  }
+
+  // stop_reason mapping
+  let stop_reason = 'end_turn'
+  if (hasToolUse || (choice && choice.finish_reason === 'tool_calls')) {
+    stop_reason = 'tool_use'
+  } else if (choice && choice.finish_reason === 'length') {
+    stop_reason = 'max_tokens'
+  } else if (choice && choice.finish_reason === 'stop') {
+    stop_reason = 'end_turn'
+  } else if (choice && choice.finish_reason) {
+    stop_reason = choice.finish_reason
+  }
+
   return {
     id: openaiResponse.id || `msg_${Date.now()}`,
     type: 'message',
     role: 'assistant',
     model: model,
     content,
-    stop_reason: choice && choice.finish_reason === 'stop' ? 'end_turn' : (choice && choice.finish_reason) || 'end_turn',
+    stop_reason,
     stop_sequence: null,
     usage: {
       input_tokens: (openaiResponse.usage && openaiResponse.usage.prompt_tokens) || 0,
@@ -139,12 +218,26 @@ function streamOpenAIToAnthropic(res, upstreamResponse, model) {
   let blockIndex = 0
   let inThinking = false
   let inText = false
+  let hasToolUse = false
   let inputTokens = 0
   let outputTokens = 0
 
   // Helper to write SSE event
   const writeEvent = (eventType, data) => {
     res.write(`event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`)
+  }
+
+  const closeOpenBlock = () => {
+    if (inThinking) {
+      writeEvent('content_block_stop', { type: 'content_block_stop', index: blockIndex })
+      blockIndex++
+      inThinking = false
+    }
+    if (inText) {
+      writeEvent('content_block_stop', { type: 'content_block_stop', index: blockIndex })
+      blockIndex++
+      inText = false
+    }
   }
 
   // Send message_start
@@ -231,24 +324,38 @@ function streamOpenAIToAnthropic(res, upstreamResponse, model) {
           })
         }
 
+        // tool_calls → tool_use blocks. Our upstream sieve emits each call
+        // in one shot (id + name + complete arguments string), so we send
+        // start + input_json_delta + stop together for each call.
+        if (delta && Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+          closeOpenBlock()
+          for (const tc of delta.tool_calls) {
+            const id = (tc && tc.id) || `toolu_${Date.now()}_${blockIndex}`
+            const name = tc && tc.function && tc.function.name
+            const args = (tc && tc.function && tc.function.arguments) || ''
+            writeEvent('content_block_start', {
+              type: 'content_block_start',
+              index: blockIndex,
+              content_block: { type: 'tool_use', id, name, input: {} }
+            })
+            if (args) {
+              writeEvent('content_block_delta', {
+                type: 'content_block_delta',
+                index: blockIndex,
+                delta: { type: 'input_json_delta', partial_json: args }
+              })
+            }
+            writeEvent('content_block_stop', {
+              type: 'content_block_stop',
+              index: blockIndex
+            })
+            blockIndex++
+            hasToolUse = true
+          }
+        }
+
         if (finishReason) {
-          // Close any open block
-          if (inThinking) {
-            writeEvent('content_block_stop', {
-              type: 'content_block_stop',
-              index: blockIndex
-            })
-            blockIndex++
-            inThinking = false
-          }
-          if (inText) {
-            writeEvent('content_block_stop', {
-              type: 'content_block_stop',
-              index: blockIndex
-            })
-            blockIndex++
-            inText = false
-          }
+          closeOpenBlock()
         }
       } catch {
         // skip malformed JSON
@@ -257,26 +364,13 @@ function streamOpenAIToAnthropic(res, upstreamResponse, model) {
   })
 
   upstreamResponse.on('end', () => {
-    // Close any remaining open blocks
-    if (inThinking) {
-      writeEvent('content_block_stop', {
-        type: 'content_block_stop',
-        index: blockIndex
-      })
-      blockIndex++
-    }
-    if (inText) {
-      writeEvent('content_block_stop', {
-        type: 'content_block_stop',
-        index: blockIndex
-      })
-      blockIndex++
-    }
+    closeOpenBlock()
 
     // message_delta with stop_reason
+    const stopReason = hasToolUse ? 'tool_use' : 'end_turn'
     writeEvent('message_delta', {
       type: 'message_delta',
-      delta: { stop_reason: 'end_turn', stop_sequence: null },
+      delta: { stop_reason: stopReason, stop_sequence: null },
       usage: { output_tokens: outputTokens }
     })
 
@@ -286,7 +380,7 @@ function streamOpenAIToAnthropic(res, upstreamResponse, model) {
     res.end()
   })
 
-  upstreamResponse.on('error', (err) => {
+  upstreamResponse.on('error', () => {
     res.end()
   })
 }

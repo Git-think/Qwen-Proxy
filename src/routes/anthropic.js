@@ -99,6 +99,8 @@ function accumulateResponse(response, enable_thinking) {
     let buffer = ''
     let fullContent = ''
     let reasoningContent = ''
+    // tool_calls accumulator: index → { id, name, arguments(string) }
+    const toolCallsByIndex = new Map()
     let totalTokens = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 
     response.on('data', (chunk) => {
@@ -133,6 +135,18 @@ function accumulateResponse(response, enable_thinking) {
           if (delta.content) {
             fullContent += delta.content
           }
+          if (Array.isArray(delta.tool_calls)) {
+            for (const tc of delta.tool_calls) {
+              const idx = (tc && typeof tc.index === 'number') ? tc.index : 0
+              const existing = toolCallsByIndex.get(idx) || { id: '', name: '', arguments: '' }
+              if (tc.id) existing.id = tc.id
+              if (tc.function && tc.function.name) existing.name = tc.function.name
+              if (tc.function && typeof tc.function.arguments === 'string') {
+                existing.arguments += tc.function.arguments
+              }
+              toolCallsByIndex.set(idx, existing)
+            }
+          }
         } catch {
           // skip
         }
@@ -144,12 +158,25 @@ function accumulateResponse(response, enable_thinking) {
       if (reasoningContent) {
         message.reasoning_content = reasoningContent
       }
+      let finish_reason = 'stop'
+      if (toolCallsByIndex.size > 0) {
+        const sortedIndices = [...toolCallsByIndex.keys()].sort((a, b) => a - b)
+        message.tool_calls = sortedIndices.map(i => {
+          const tc = toolCallsByIndex.get(i)
+          return {
+            id: tc.id || `call_${Date.now()}_${i}`,
+            type: 'function',
+            function: { name: tc.name, arguments: tc.arguments || '{}' }
+          }
+        })
+        finish_reason = 'tool_calls'
+      }
 
       resolve({
         id: `chatcmpl-${Date.now()}`,
         object: 'chat.completion',
         created: Math.round(Date.now() / 1000),
-        choices: [{ index: 0, message, finish_reason: 'stop' }],
+        choices: [{ index: 0, message, finish_reason }],
         usage: totalTokens,
       })
     })
