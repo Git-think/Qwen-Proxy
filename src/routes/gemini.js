@@ -4,6 +4,7 @@ const { validateApiKey } = require('../middlewares/authorization.js')
 const { processRequestBody } = require('../middlewares/chat-middleware.js')
 const { geminiToOpenAI, openaiToGeminiResponse, streamOpenAIToGemini } = require('../adapters/gemini.js')
 const { sendChatRequest } = require('../utils/request.js')
+const { parseToolCallsFromText } = require('../utils/toolcall.js')
 const { logger } = require('../utils/logger')
 const config = require('../config/index.js')
 
@@ -72,7 +73,7 @@ const handleGenerateContent = async (req, res) => {
     }
 
     // Accumulate response
-    const openaiResponse = await accumulateResponse(response_data.response)
+    const openaiResponse = await accumulateResponse(response_data.response, req.toolcall_enabled)
     const geminiResponse = openaiToGeminiResponse(openaiResponse)
     res.json(geminiResponse)
   } catch (error) {
@@ -131,7 +132,7 @@ const handleStreamGenerateContent = async (req, res) => {
 /**
  * Accumulate upstream SSE response into a single OpenAI-format response object
  */
-function accumulateResponse(response) {
+function accumulateResponse(response, toolcallEnabled = false) {
   return new Promise((resolve, reject) => {
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
@@ -183,11 +184,25 @@ function accumulateResponse(response) {
         message.reasoning_content = reasoningContent
       }
 
+      let finish_reason = 'stop'
+      // When tool calling is gated on, the upstream emits the DSML XML
+      // inside delta.content. Pull tool_calls out of the accumulated text
+      // so openaiToGeminiResponse can render them as functionCall parts
+      // instead of leaking the raw XML to clients.
+      if (toolcallEnabled && fullContent) {
+        const parsed = parseToolCallsFromText(fullContent)
+        if (parsed.toolCalls.length > 0) {
+          message.content = parsed.content
+          message.tool_calls = parsed.toolCalls
+          finish_reason = 'tool_calls'
+        }
+      }
+
       resolve({
         id: `chatcmpl-${Date.now()}`,
         object: 'chat.completion',
         created: Math.round(Date.now() / 1000),
-        choices: [{ index: 0, message, finish_reason: 'stop' }],
+        choices: [{ index: 0, message, finish_reason }],
         usage: totalTokens,
       })
     })

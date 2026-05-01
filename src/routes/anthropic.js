@@ -5,6 +5,7 @@ const { processRequestBody } = require('../middlewares/chat-middleware.js')
 const { handleChatCompletion, handleStreamResponse, handleNonStreamResponse, setResponseHeaders } = require('../controllers/chat.js')
 const { anthropicToOpenAI, openaiToAnthropicResponse, streamOpenAIToAnthropic } = require('../adapters/anthropic.js')
 const { sendChatRequest } = require('../utils/request.js')
+const { parseToolCallsFromText } = require('../utils/toolcall.js')
 const { logger } = require('../utils/logger')
 const config = require('../config/index.js')
 
@@ -77,7 +78,7 @@ const handleAnthropicMessages = async (req, res) => {
       streamOpenAIToAnthropic(res, response_data.response, requestedModel)
     } else {
       // Non-streaming: accumulate response then convert
-      const openaiResponse = await accumulateResponse(response_data.response, req.enable_thinking)
+      const openaiResponse = await accumulateResponse(response_data.response, req.enable_thinking, req.toolcall_enabled)
       const anthropicResponse = openaiToAnthropicResponse(openaiResponse, requestedModel)
       res.json(anthropicResponse)
     }
@@ -93,7 +94,7 @@ const handleAnthropicMessages = async (req, res) => {
 /**
  * Accumulate upstream SSE response into a single OpenAI-format response object
  */
-function accumulateResponse(response, enable_thinking) {
+function accumulateResponse(response, enable_thinking, toolcallEnabled = false) {
   return new Promise((resolve, reject) => {
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
@@ -135,6 +136,9 @@ function accumulateResponse(response, enable_thinking) {
           if (delta.content) {
             fullContent += delta.content
           }
+          // Defensive: if upstream ever sends native tool_calls deltas, accumulate
+          // them as well. Qwen currently doesn't, so this branch is dead today
+          // but keeps the accumulator forward-compatible.
           if (Array.isArray(delta.tool_calls)) {
             for (const tc of delta.tool_calls) {
               const idx = (tc && typeof tc.index === 'number') ? tc.index : 0
@@ -158,7 +162,10 @@ function accumulateResponse(response, enable_thinking) {
       if (reasoningContent) {
         message.reasoning_content = reasoningContent
       }
+
       let finish_reason = 'stop'
+
+      // Path 1: native tool_calls deltas observed in stream
       if (toolCallsByIndex.size > 0) {
         const sortedIndices = [...toolCallsByIndex.keys()].sort((a, b) => a - b)
         message.tool_calls = sortedIndices.map(i => {
@@ -170,6 +177,18 @@ function accumulateResponse(response, enable_thinking) {
           }
         })
         finish_reason = 'tool_calls'
+      }
+      // Path 2: tool calling is gated on, but upstream emitted DSML XML in
+      // delta.content — parse it out of the accumulated text and surface
+      // the calls on the response. Without this, the Anthropic non-stream
+      // handler would send the raw XML back as plain text.
+      else if (toolcallEnabled) {
+        const parsed = parseToolCallsFromText(fullContent)
+        if (parsed.toolCalls.length > 0) {
+          message.content = parsed.content
+          message.tool_calls = parsed.toolCalls
+          finish_reason = 'tool_calls'
+        }
       }
 
       resolve({
