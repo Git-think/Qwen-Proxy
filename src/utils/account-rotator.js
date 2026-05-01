@@ -34,6 +34,18 @@ class AccountRotator {
    * @returns {string|null} Account token or null
    */
   getNextToken() {
+    const info = this.getNextAccountInfo()
+    return info ? info.token : null
+  }
+
+  /**
+   * Get next available account info (token + email).
+   * Same selection rules as getNextToken — exposed so callers (e.g. the
+   * smart proxy layer) can scope per-account state without a second
+   * lookup, and without advancing the rotator twice.
+   * @returns {{token:string, email:string}|null}
+   */
+  getNextAccountInfo() {
     if (this.accounts.length === 0) {
       logger.error('No available accounts', 'ACCOUNT')
       return null
@@ -42,14 +54,25 @@ class AccountRotator {
     const availableAccounts = this._getAvailableAccounts()
     if (availableAccounts.length === 0) {
       logger.warn('All accounts unavailable, using round-robin', 'ACCOUNT')
-      return this._getTokenByRoundRobin()
+      const acc = this._getAccountByRoundRobin()
+      return acc ? { token: acc.token, email: acc.email } : null
     }
 
-    // Select least recently used from available accounts
     const selectedAccount = this._selectLeastUsedAccount(availableAccounts)
     this._recordUsage(selectedAccount.email)
+    return { token: selectedAccount.token, email: selectedAccount.email }
+  }
 
-    return selectedAccount.token
+  /**
+   * Reverse lookup: which email currently owns the given token? Used by
+   * the request layer to scope a per-account proxy without advancing the
+   * rotator. Returns null if no match.
+   * @param {string} token
+   */
+  getEmailByToken(token) {
+    if (!token) return null
+    const acc = this.accounts.find(a => a.token === token)
+    return acc ? acc.email : null
   }
 
   /**
@@ -163,6 +186,12 @@ class AccountRotator {
 
   /** @private */
   _getTokenByRoundRobin() {
+    const acc = this._getAccountByRoundRobin()
+    return acc ? acc.token : null
+  }
+
+  /** @private — same as _getTokenByRoundRobin but returns the account */
+  _getAccountByRoundRobin() {
     if (this.currentIndex >= this.accounts.length) {
       this.currentIndex = 0
     }
@@ -172,11 +201,11 @@ class AccountRotator {
 
     if (account && account.token) {
       this._recordUsage(account.email)
-      return account.token
+      return account
     }
 
     if (this.currentIndex < this.accounts.length) {
-      return this._getTokenByRoundRobin()
+      return this._getAccountByRoundRobin()
     }
 
     return null

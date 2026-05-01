@@ -18,6 +18,36 @@ const parseApiKeys = () => {
     }
 }
 
+/**
+ * Parse proxy list from env. Accepts:
+ *   PROXIES=socks5://1.2.3.4:1080,http://user:pass@host:port,...
+ *   (legacy) PROXY_URL=<single>
+ * Returns deduped array of normalized URLs. Each entry must be a parseable
+ * URL with a known scheme (socks5/socks4/socks/http/https).
+ */
+const parseProxies = () => {
+    const raw = []
+    const env = process.env.PROXIES
+    if (env) {
+        raw.push(...env.split(',').map(s => s.trim()).filter(Boolean))
+    }
+    if (process.env.PROXY_URL) {
+        raw.push(String(process.env.PROXY_URL).trim())
+    }
+    const seen = new Set()
+    const out = []
+    for (const url of raw) {
+        if (!url || seen.has(url)) continue
+        try {
+            const u = new URL(url)
+            if (!/^(socks5h?|socks4a?|socks|http|https):$/.test(u.protocol)) continue
+            seen.add(url)
+            out.push(url)
+        } catch { /* invalid url — skip */ }
+    }
+    return out
+}
+
 const { apiKeys, adminKey } = parseApiKeys()
 
 const config = {
@@ -40,8 +70,13 @@ const config = {
     maxLogFiles: parseInt(process.env.MAX_LOG_FILES) || 5,
     // Custom reverse proxy URL config
     qwenChatProxyUrl: process.env.QWEN_CHAT_PROXY_URL || "https://chat.qwen.ai",
-    // Proxy config
+    // Single-proxy legacy field (kept for getProxyAgent backward compat)
     proxyUrl: process.env.PROXY_URL || null,
+    // Smart proxy pool: list of proxy URLs (PROXIES env + PROXY_URL fallback,
+    // deduped). Each account gets bound to one entry from this pool.
+    proxies: parseProxies(),
+    // Maximum upstream-request retries when network errors look proxy-related
+    proxyMaxRetries: Math.max(1, parseInt(process.env.PROXY_MAX_RETRIES) || 3),
     // Vercel/serverless mode detection
     isServerless: !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
 }

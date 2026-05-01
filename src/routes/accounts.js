@@ -154,4 +154,61 @@ router.post('/refreshAllAccounts', adminKeyVerify, async (req, res) => {
   }
 })
 
+/**
+ * GET /proxy/status - Smart proxy pool status (admin)
+ * Returns the in-memory pool snapshot including each entry's status,
+ * the host (credentials are stripped), and which accounts are bound to it.
+ */
+router.get('/proxy/status', adminKeyVerify, async (req, res) => {
+  try {
+    const list = accountManager.getProxyStatus()
+    res.json({ total: list.length, data: list })
+  } catch (error) {
+    logger.error('Failed to load proxy status', 'PROXY', '', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+/**
+ * POST /proxy/add - Add a proxy URL to the pool at runtime (admin).
+ * Body: { url: 'socks5://...' | 'http://...' | 'https://...' }
+ */
+router.post('/proxy/add', adminKeyVerify, async (req, res) => {
+  try {
+    const { url } = req.body || {}
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'Missing url' })
+    }
+    if (!accountManager.proxyPool) {
+      return res.status(400).json({ error: 'Proxy pool not initialized' })
+    }
+    const ok = await accountManager.proxyPool.addProxy(url.trim())
+    res.json({ success: ok, url })
+  } catch (error) {
+    logger.error('Failed to add proxy', 'PROXY', '', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+/**
+ * DELETE /proxy - Remove a proxy from the pool (admin).
+ * Body: { url }
+ */
+router.delete('/proxy', adminKeyVerify, async (req, res) => {
+  try {
+    const { url } = req.body || {}
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'Missing url' })
+    }
+    if (!accountManager.proxyPool) {
+      return res.status(400).json({ error: 'Proxy pool not initialized' })
+    }
+    const ok = await accountManager.proxyPool.removeProxy(url)
+    res.json({ success: ok, url })
+  } catch (error) {
+    logger.error('Failed to remove proxy', 'PROXY', '', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
 module.exports = router

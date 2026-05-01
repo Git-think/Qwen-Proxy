@@ -9,7 +9,14 @@
     "build:webui": "cd webui && npm install && npm run build",
     "vercel-build": "cd webui && npm install && npm run build"
   },
-  "keywords": ["qwen", "openai", "api", "proxy", "serverless", "vercel"],
+  "keywords": [
+    "qwen",
+    "openai",
+    "api",
+    "proxy",
+    "serverless",
+    "vercel"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -23,7 +30,8 @@
     "https-proxy-agent": "^7.0.6",
     "jwt-decode": "^4.0.0",
     "mime-types": "^3.0.1",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "socks-proxy-agent": "^8.0.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"

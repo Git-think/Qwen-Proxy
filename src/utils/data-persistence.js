@@ -178,9 +178,68 @@ class DataPersistence {
       const dirPath = path.dirname(this.dataFilePath)
       await fs.mkdir(dirPath, { recursive: true })
 
-      const defaultData = { accounts: [] }
+      const defaultData = { accounts: [], proxyBindings: {}, proxyStatuses: {} }
       await fs.writeFile(this.dataFilePath, JSON.stringify(defaultData, null, 2), 'utf-8')
       logger.success('Default data file created', 'FILE')
+    }
+  }
+
+  /* -------------------- proxy persistence -------------------- */
+  // proxyBindings: { [email]: proxyUrl } — which proxy is glued to which account
+  // proxyStatuses: { [proxyUrl]: 'untested'|'available'|'failed' } — last-known
+  // health of each proxy. Both survive restarts in file mode.
+
+  async loadProxyBindings() {
+    if (config.dataSaveMode !== 'file') return {}
+    try {
+      await this._ensureDataFileExists()
+      const data = JSON.parse(await fs.readFile(this.dataFilePath, 'utf-8'))
+      return data.proxyBindings || {}
+    } catch (error) {
+      logger.error('Failed to load proxy bindings', 'DATA', '', error)
+      return {}
+    }
+  }
+
+  async saveProxyBinding(email, proxyUrl) {
+    if (config.dataSaveMode !== 'file') return false
+    try {
+      await this._ensureDataFileExists()
+      const data = JSON.parse(await fs.readFile(this.dataFilePath, 'utf-8'))
+      if (!data.proxyBindings) data.proxyBindings = {}
+      if (proxyUrl == null) delete data.proxyBindings[email]
+      else data.proxyBindings[email] = proxyUrl
+      await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')
+      return true
+    } catch (error) {
+      logger.error(`Failed to save proxy binding (${email})`, 'DATA', '', error)
+      return false
+    }
+  }
+
+  async loadProxyStatuses() {
+    if (config.dataSaveMode !== 'file') return {}
+    try {
+      await this._ensureDataFileExists()
+      const data = JSON.parse(await fs.readFile(this.dataFilePath, 'utf-8'))
+      return data.proxyStatuses || {}
+    } catch (error) {
+      logger.error('Failed to load proxy statuses', 'DATA', '', error)
+      return {}
+    }
+  }
+
+  async saveProxyStatuses(statuses) {
+    if (config.dataSaveMode !== 'file') return false
+    try {
+      await this._ensureDataFileExists()
+      const data = JSON.parse(await fs.readFile(this.dataFilePath, 'utf-8'))
+      data.proxyStatuses = statuses || {}
+      await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')
+      return true
+    } catch (error) {
+      logger.error('Failed to save proxy statuses', 'DATA', '', error)
+      return false
     }
   }
 }

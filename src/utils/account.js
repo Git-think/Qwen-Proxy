@@ -2,6 +2,8 @@ const config = require('../config/index.js')
 const DataPersistence = require('./data-persistence')
 const TokenManager = require('./token-manager')
 const AccountRotator = require('./account-rotator')
+const ProxyPool = require('./proxy-pool')
+const { getProxyHost } = require('./proxy-helper')
 const { logger } = require('./logger')
 
 /**
@@ -13,6 +15,9 @@ class Account {
         this.dataPersistence = new DataPersistence()
         this.tokenManager = new TokenManager()
         this.accountRotator = new AccountRotator()
+        // Smart proxy pool. Stays null when no proxies are configured —
+        // request layer treats that as "direct connection" same as before.
+        this.proxyPool = null
 
         this.accountTokens = []
         this.isInitialized = false
@@ -28,7 +33,28 @@ class Account {
      */
     async _initialize() {
         try {
+            // Bring up the proxy pool BEFORE loading accounts. Bindings
+            // persist across restarts in file mode, so we want them in
+            // place when we attach proxies to account objects below.
+            await this._initializeProxyPool()
+
             await this.loadAccountTokens()
+
+            // Best-effort: ensure every account has a bound proxy when a
+            // pool is configured. Existing bindings are reused; new
+            // accounts get one assigned on first use of the pool.
+            if (this.proxyPool && this.proxyPool.size() > 0) {
+                for (const acc of this.accountTokens) {
+                    const bound = this.proxyPool.getProxyForAccount(acc.email)
+                    if (bound) {
+                        acc.proxy = bound
+                    } else {
+                        // Defer assignment to first request to avoid
+                        // probing all proxies on cold start.
+                        acc.proxy = null
+                    }
+                }
+            }
 
             // Set up periodic token refresh
             if (config.autoRefresh && !config.isServerless) {
@@ -43,6 +69,37 @@ class Account {
         } catch (error) {
             this.isInitialized = false
             logger.error('Account manager initialization failed', 'ACCOUNT', '', error)
+        }
+    }
+
+    /**
+     * Build the proxy pool from env (config.proxies) merged with file-mode
+     * persisted statuses. Persisted-only entries are honored too — the
+     * operator may have manually edited data.json. Dedupe is by URL string.
+     * @private
+     */
+    async _initializeProxyPool() {
+        try {
+            const savedStatuses = await this.dataPersistence.loadProxyStatuses()
+            const fileProxies = Object.keys(savedStatuses)
+            const merged = [...new Set([...(config.proxies || []), ...fileProxies])]
+            if (merged.length === 0) {
+                logger.info('No proxy pool configured (PROXIES / PROXY_URL empty)', 'PROXY')
+                return
+            }
+            this.proxyPool = new ProxyPool(this.dataPersistence, merged)
+            const savedBindings = await this.dataPersistence.loadProxyBindings()
+            // Make sure every URL has a status entry — newcomers default
+            // to 'untested' so they're discoverable on first assignProxy.
+            const newStatuses = { ...savedStatuses }
+            for (const u of merged) {
+                if (!newStatuses[u]) newStatuses[u] = 'untested'
+            }
+            await this.proxyPool.initialize(newStatuses, savedBindings)
+            await this.dataPersistence.saveProxyStatuses(newStatuses)
+        } catch (error) {
+            logger.error('Failed to initialize proxy pool', 'PROXY', '', error)
+            this.proxyPool = null
         }
     }
 
@@ -421,6 +478,55 @@ class Account {
         }
         this.accountRotator.reset()
         logger.info('Account manager resources cleaned up', 'ACCOUNT')
+    }
+
+    /**
+     * Lookup the proxy URL bound to an account, lazily assigning one on
+     * first use so cold start doesn't probe every proxy upfront.
+     * Returns null when no pool is configured (callers treat as direct).
+     * @param {string} email
+     */
+    async getProxyForAccount(email) {
+        if (!this.proxyPool || this.proxyPool.size() === 0) return null
+        const bound = this.proxyPool.getProxyForAccount(email)
+        if (bound) return bound
+        const assigned = await this.proxyPool.assignProxy(email)
+        if (assigned) {
+            const acc = this.accountTokens.find(a => a.email === email)
+            if (acc) acc.proxy = assigned
+        }
+        return assigned
+    }
+
+    /**
+     * Mark the current proxy as failed and rebind the account to a new
+     * one. Called from request.js when an upstream call dies with a
+     * proxy-shaped network error. The pool may re-test the failed entry
+     * later — this is not a permanent eviction.
+     * @param {string} email
+     * @param {string} proxyUrl
+     */
+    async handleNetworkFailure(email, proxyUrl) {
+        if (!this.proxyPool) return null
+        logger.info(`Network failure on ${email} via ${getProxyHost(proxyUrl)}`, 'PROXY')
+        await this.proxyPool.markProxyAsFailed(proxyUrl)
+        const next = await this.proxyPool.assignProxy(email, true)
+        if (next) {
+            const acc = this.accountTokens.find(a => a.email === email)
+            if (acc) acc.proxy = next
+            logger.success(`Re-bound ${email} -> ${getProxyHost(next)}`, 'PROXY')
+        } else {
+            logger.error(`No fallback proxy available for ${email}`, 'PROXY')
+        }
+        return next
+    }
+
+    /**
+     * Snapshot of the proxy pool for the admin UI.
+     * @returns {Array}
+     */
+    getProxyStatus() {
+        return this.proxyPool ? this.proxyPool.list() : []
     }
 }
 

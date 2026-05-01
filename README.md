@@ -338,8 +338,21 @@ cd webui && npm run dev                     # 开发
 | `SEARCH_INFO_MODE` | 搜索显示 `text` / `table` | `text` | — |
 | `SIMPLE_MODEL_MAP` | 简化模型列表 | `false` | — |
 | `LOG_LEVEL` | 日志级别 | `INFO` | — |
-| `PROXY_URL` | 代理地址 | — | — |
+| `PROXY_URL` | 单代理（legacy，会合并进 `PROXIES`） | — | — |
+| `PROXIES` | 代理池，逗号分隔（`socks5://` / `http://` / `https://`） | — | — |
+| `PROXY_MAX_RETRIES` | 代理失败时的重试次数 | `3` | — |
 | `QWEN_CHAT_PROXY_URL` | 自定义 API 地址 | `https://chat.qwen.ai` | — |
+
+### 智能代理池
+
+`PROXIES` 配置后启用代理池模式：
+
+- **状态持久化**（仅 `DATA_SAVE_MODE=file`）：代理 `untested/available/failed` 状态和账号绑定关系写入 `data/data.json`，重启秒级恢复
+- **四级优先级**：先 _可用且未占用_ → 再 _未测试_（首次探测）→ 再 _已失败_（再探测，可能恢复）→ 最后 _可用且共享_（按占用最少优先）
+- **故障转移**：上游请求出现 TCP/SOCKS 类网络错误时自动标记代理失败、换绑、重试（最多 `PROXY_MAX_RETRIES` 次）
+- **增量去重**：从 `PROXIES` 环境变量 + `data/data.json` 持久化记录合并加载，按 URL 去重
+
+管理面板提供 `GET /api/proxy/status`、`POST /api/proxy/add`、`DELETE /api/proxy` 三个接口（需要管理员 API Key）。
 
 ---
 
