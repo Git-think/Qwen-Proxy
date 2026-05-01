@@ -17,11 +17,68 @@ function hasTools(reqBody) {
   return Array.isArray(reqBody && reqBody.tools) && reqBody.tools.length > 0
 }
 
+/* ---------------- tool-name obfuscation ----------------
+ * Qwen upstream validates tool names against an internal registry and
+ * rejects common short ones (Read/Write/Bash/Edit/Grep/...) with
+ * "Tool X does not exists.". We rewrite outbound names so the model sees
+ * names that don't collide with Qwen's built-in checks, and reverse the
+ * mapping on the inbound tool_calls so the client receives its original
+ * tool ids.
+ *
+ * Applied:
+ *   outbound: prompt's tool schema + history's assistant.tool_calls
+ *   inbound : parseToolCallsBlock results + streaming sieve emissions
+ */
+const TOOL_ALIAS_OUT = {
+  Read: 'fs_open_file',
+  Write: 'fs_write_file',
+  Edit: 'fs_edit_file',
+  MultiEdit: 'fs_multi_edit',
+  Bash: 'shell_run',
+  BashOutput: 'shell_output',
+  KillShell: 'shell_kill',
+  Grep: 'text_search',
+  Glob: 'fs_glob',
+  LS: 'fs_list',
+  WebFetch: 'http_fetch',
+  WebSearch: 'web_search',
+  TodoWrite: 'todo_write',
+  Task: 'agent_task',
+  NotebookEdit: 'notebook_edit',
+  NotebookRead: 'notebook_read',
+  ExitPlanMode: 'plan_exit',
+  SlashCommand: 'slash_command',
+}
+const TOOL_ALIAS_IN = Object.fromEntries(
+  Object.entries(TOOL_ALIAS_OUT).map(([k, v]) => [v, k])
+)
+const OBFUSCATE_PREFIX = 't_'
+
+function obfuscateToolName(name) {
+  if (!name || typeof name !== 'string') return name
+  if (Object.prototype.hasOwnProperty.call(TOOL_ALIAS_OUT, name)) return TOOL_ALIAS_OUT[name]
+  // Don't double-encode if already obfuscated (alias output or t_-prefixed)
+  if (Object.prototype.hasOwnProperty.call(TOOL_ALIAS_IN, name)) return name
+  if (name.startsWith(OBFUSCATE_PREFIX)) return name
+  return OBFUSCATE_PREFIX + name
+}
+
+function deobfuscateToolName(name) {
+  if (!name || typeof name !== 'string') return name
+  if (Object.prototype.hasOwnProperty.call(TOOL_ALIAS_IN, name)) return TOOL_ALIAS_IN[name]
+  if (name.startsWith(OBFUSCATE_PREFIX)) return name.slice(OBFUSCATE_PREFIX.length)
+  // Not obfuscated (model may have hallucinated a literal short name despite
+  // the prompt). Pass through; the caller can decide what to do with an
+  // unrecognized name.
+  return name
+}
+
 /* ---------------- prompt build ---------------- */
 function buildToolPromptBlock(tools) {
   const decls = (tools || []).map(t => {
     const fn = t.function || t
-    const name = (fn && fn.name) || ''
+    const originalName = (fn && fn.name) || ''
+    const name = obfuscateToolName(originalName)
     const desc = (fn && fn.description) || ''
     const params = fn && (fn.parameters || fn.input_schema)
     let paramsBlock = '{}'
@@ -57,8 +114,9 @@ function serializeAssistantToolCalls(toolCalls) {
   const blocks = []
   for (const tc of toolCalls) {
     const fn = tc.function || tc
-    const name = String((fn && fn.name) || '').trim()
-    if (!name) continue
+    const originalName = String((fn && fn.name) || '').trim()
+    if (!originalName) continue
+    const name = obfuscateToolName(originalName)
     let args = fn && fn.arguments
     if (typeof args === 'string') {
       const repaired = tryJsonRepair(args)
@@ -179,9 +237,12 @@ function parseToolCallsBlock(block) {
   const invokeRe = /<\|DSML\|invoke\s+name="([^"]+)"\s*>([\s\S]*?)<\/\|DSML\|invoke>/g
   let m
   while ((m = invokeRe.exec(inner)) !== null) {
-    const name = m[1]
+    const rawName = m[1]
     const body = m[2]
     const params = parseParameters(body)
+    // Reverse the outbound obfuscation so the OpenAI tool_calls returned
+    // to the client carry the original tool ids the client sent.
+    const name = deobfuscateToolName(rawName)
     calls.push({
       id: 'call_' + cryptoRandom(),
       type: 'function',
@@ -424,5 +485,7 @@ module.exports = {
   serializeToolResult,
   parseToolCallsFromText,
   createSieve,
+  obfuscateToolName,
+  deobfuscateToolName,
   _internal: { tryJsonRepair, repairQuotes, balanceBrackets, parseToolCallsBlock }
 }
