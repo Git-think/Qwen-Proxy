@@ -18,6 +18,14 @@ const buildPublicModelData = (model, suffix = '') => {
     modelData.upstream_id = upstreamModelID
     modelData.display_name = displayModelID
 
+    // Keep nested info.id / info.name in sync with the public id/name so
+    // clients that look at either field see the same suffix-aware value.
+    // The original upstream id (without suffix) is preserved in upstream_id.
+    if (modelData.info && typeof modelData.info === 'object') {
+        modelData.info.id = modelData.id
+        modelData.info.name = modelData.name
+    }
+
     return modelData
 }
 
