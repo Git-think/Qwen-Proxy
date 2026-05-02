@@ -332,7 +332,9 @@ cd webui && npm run dev                     # 开发
 | `API_KEY` | API 密钥，逗号分隔，第一个为管理员 | — | ✅ |
 | `ACCOUNTS` | 账号 `email:pass,email2:pass2` | — | ✅ |
 | `SERVICE_PORT` | 端口 | `3000` | — |
-| `DATA_SAVE_MODE` | `none`（内存）/ `file`（文件） | `none` | — |
+| `DATA_SAVE_MODE` | `none`（内存）/ `file`（文件）/ `redis`（Upstash） | `none` | — |
+| `UPSTASH_REDIS_REST_URL` | Upstash REST 地址（仅 `redis` 模式） | — | — |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST Token（仅 `redis` 模式） | — | — |
 | `LISTEN_ADDRESS` | 监听地址 | 所有接口 | — |
 | `OUTPUT_THINK` | 输出思考内容 | `false` | — |
 | `SEARCH_INFO_MODE` | 搜索显示 `text` / `table` | `text` | — |
@@ -347,12 +349,34 @@ cd webui && npm run dev                     # 开发
 
 `PROXIES` 配置后启用代理池模式：
 
-- **状态持久化**（仅 `DATA_SAVE_MODE=file`）：代理 `untested/available/failed` 状态和账号绑定关系写入 `data/data.json`，重启秒级恢复
+- **状态持久化**（`DATA_SAVE_MODE=file` 或 `redis`，见下文）：代理 `untested/available/failed` 状态和账号绑定关系写入存储，重启秒级恢复。`none` 模式不持久（重启重新探测）
 - **四级优先级**：先 _可用且未占用_ → 再 _未测试_（首次探测）→ 再 _已失败_（再探测，可能恢复）→ 最后 _可用且共享_（按占用最少优先）
 - **故障转移**：上游请求出现 TCP/SOCKS 类网络错误时自动标记代理失败、换绑、重试（最多 `PROXY_MAX_RETRIES` 次）
-- **增量去重**：从 `PROXIES` 环境变量 + `data/data.json` 持久化记录合并加载，按 URL 去重
+- **增量去重**：从 `PROXIES` 环境变量 + 持久化记录合并加载，按 URL 去重
 
 管理面板提供 `GET /api/proxy/status`、`POST /api/proxy/add`、`DELETE /api/proxy` 三个接口（需要管理员 API Key）。
+
+### 数据持久化模式
+
+| 模式 | 使用场景 | 存储位置 |
+|---|---|---|
+| `none`（默认） | 任何平台 | 内存；重启即丢，账号靠 `ACCOUNTS` env 重新登录 |
+| `file` | 本地 / Docker / VPS / Render | `data/data.json` |
+| `redis` | **Vercel / Netlify / Cloudflare Workers** 等 serverless | Upstash Redis REST（HTTPS） |
+
+> ⚠️ **Vercel 不支持 `file` 模式**：serverless 容器无持久磁盘，每次冷启动 `data/data.json` 都会丢失，账号 token 和代理状态都会重置。Vercel 部署请用 `redis` 模式。
+
+#### Vercel + Upstash Redis 配置步骤
+
+1. 在 [console.upstash.com](https://console.upstash.com) 创建一个 Redis 数据库（免费档够用）
+2. 在数据库的 **REST API** 选项卡复制 `UPSTASH_REDIS_REST_URL` 与 `UPSTASH_REDIS_REST_TOKEN`
+3. 在 Vercel 项目 Settings → Environment Variables 添加：
+   ```
+   DATA_SAVE_MODE=redis
+   UPSTASH_REDIS_REST_URL=https://xxxxx.upstash.io
+   UPSTASH_REDIS_REST_TOKEN=AXxxxxxxxxxxxxxxxxxxxxxxx
+   ```
+4. Redeploy。重启后账号 token、代理绑定都会从 Redis 恢复
 
 ---
 
