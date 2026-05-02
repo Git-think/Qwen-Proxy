@@ -206,7 +206,7 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/verify` | 验证 API Key `{ apiKey }` → `{ valid: bool }` |
+| POST | `/verify` | 验证 API Key `{ apiKey }` → `{ valid: bool, isAdmin: bool, status, message }` |
 | GET | `/health` | 健康检查 → `{ status: 'ok' }` |
 | GET | `/api/vercel/info` | Vercel runtime 检测信息（boolean + 非密 ID）；前端 Sidebar 用 |
 

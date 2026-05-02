@@ -262,7 +262,7 @@ const endpoints = [
     description: '检查 API Key 是否有效。',
     auth: false,
     body: { apiKey: 'sk-your-key' },
-    response: { valid: true },
+    response: { valid: true, isAdmin: true, status: 200, message: 'success' },
     notes: ['无需认证'],
   },
   {
