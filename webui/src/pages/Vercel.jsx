@@ -181,21 +181,75 @@ export default function Vercel() {
             连接状态
           </h3>
           {status?.configured ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-slate-400">Token:</span>
-                <span className="text-emerald-400">已配置</span>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-400">Token:</span>
+                  <span className="text-emerald-400">已配置</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-400">Project ID:</span>
+                  <span className="text-emerald-400">已配置</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-400">Team ID:</span>
+                  <span className={status?.hasTeamId ? 'text-emerald-400' : 'text-slate-500'}>
+                    {status?.hasTeamId ? '已配置' : '未配置（个人账号）'}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-slate-400">Project ID:</span>
-                <span className="text-emerald-400">已配置</span>
+              {/* Read-back the actual project / team IDs so the operator can
+                  visually confirm against the Vercel dashboard. Click the
+                  ID to copy — useful when comparing against what's in
+                  Settings → General. The token is intentionally omitted. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-white/[0.06]">
+                {status?.projectId && (
+                  <div className="text-xs">
+                    <div className="text-slate-500 mb-1">检测到的 Project ID</div>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(status.projectId); toast.success('已复制 Project ID') }}
+                      className="font-mono text-accent-glow hover:underline break-all text-left"
+                      title="点击复制"
+                    >
+                      {status.projectId}
+                    </button>
+                  </div>
+                )}
+                {status?.teamId && (
+                  <div className="text-xs">
+                    <div className="text-slate-500 mb-1">检测到的 Team ID</div>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(status.teamId); toast.success('已复制 Team ID') }}
+                      className="font-mono text-accent-glow hover:underline break-all text-left"
+                      title="点击复制"
+                    >
+                      {status.teamId}
+                    </button>
+                  </div>
+                )}
+                {status?.vercelUrl && (
+                  <div className="text-xs">
+                    <div className="text-slate-500 mb-1">当前部署 URL</div>
+                    <a
+                      href={`https://${status.vercelUrl}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-accent-glow hover:underline break-all"
+                    >
+                      {status.vercelUrl}
+                    </a>
+                  </div>
+                )}
+                {status?.vercelEnv && (
+                  <div className="text-xs">
+                    <div className="text-slate-500 mb-1">部署环境</div>
+                    <span className="font-mono text-slate-300">{status.vercelEnv}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-slate-400">Team ID:</span>
-                <span className={status?.hasTeamId ? 'text-emerald-400' : 'text-slate-500'}>
-                  {status?.hasTeamId ? '已配置' : '未配置（个人账号）'}
-                </span>
-              </div>
+              <p className="text-xs text-slate-500 pt-1">
+                请对照 <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer" className="text-accent-glow hover:underline">Vercel Dashboard</a> 中的 Project ID 是否一致。点击 ID 即可复制。
+              </p>
             </div>
           ) : (
             <div className="space-y-3">

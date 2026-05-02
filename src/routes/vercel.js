@@ -12,9 +12,11 @@ function getVercelConfig() {
   }
 }
 
-// Public lightweight info endpoint. Returns boolean flags only — no values.
-// Used by the frontend Sidebar to decide whether to show the Vercel link
-// without requiring the admin API key. Mounted under /api/vercel/info.
+// Public lightweight info endpoint. Returns identifying flags AND the
+// non-secret values (projectId, teamId) so operators can confirm at a
+// glance that the env vars they set match the Vercel project they intend
+// to manage. The token is never exposed — only its presence (hasToken).
+// Mounted under /api/vercel/info.
 router.get('/vercel/info', (req, res) => {
   const { vercelToken, projectId, teamId } = getVercelConfig()
   res.json({
@@ -25,6 +27,12 @@ router.get('/vercel/info', (req, res) => {
     hasToken: !!vercelToken,
     hasProjectId: !!projectId,
     hasTeamId: !!teamId,
+    // Non-secret identifiers — safe to expose so the UI can render them
+    // for visual confirmation. Project ID is also visible in the dashboard
+    // URL, and Team ID is exposed in account-level URLs, so neither is
+    // sensitive in the same way the token is.
+    projectId: projectId || null,
+    teamId: teamId || null,
   })
 })
 
@@ -36,6 +44,13 @@ router.get('/vercel/status', adminKeyVerify, async (req, res) => {
     hasProjectId: !!projectId,
     hasTeamId: !!teamId,
     isVercel: !!(process.env.VERCEL),
+    // Same non-secret IDs as /vercel/info — surfaced here too so the
+    // admin page can render visual confirmation in one round-trip
+    // instead of needing a second public call.
+    projectId: projectId || null,
+    teamId: teamId || null,
+    vercelEnv: process.env.VERCEL_ENV || null,
+    vercelUrl: process.env.VERCEL_URL || null,
   })
 })
 
