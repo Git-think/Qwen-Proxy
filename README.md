@@ -148,6 +148,8 @@ curl "http://localhost:3000/v1beta/models/qwen3.6-plus:generateContent" \
 
 配置完成后重新部署一次，左侧导航会出现 **Vercel 同步** 入口。
 
+> 💡 **Vercel 同步是可选的**：它的主要用途是把 `ACCOUNTS` 写回 Vercel env 让重部署后保留。如果你已经用了 `DATA_SAVE_MODE=redis`，账号和代理状态直接持久化在 Redis，通过管理面板（`/admin`）就能增删账号——**不需要再配 Vercel 同步**。Redis 模式更通用，跨平台一致。两种方式二选一。
+
 ### Docker 部署
 
 ```bash
@@ -170,11 +172,49 @@ docker run -d -p 3000:3000 \
 1. 创建 **Web Service**，连接 GitHub
 2. Build Command: `npm install && npm run build:webui`
 3. Start Command: `npm start`
-4. 环境变量：`API_KEY`、`ACCOUNTS`、`DATA_SAVE_MODE=none`
+4. 环境变量：`API_KEY`、`ACCOUNTS`
+
+> ⚠️ **Render 免费版无持久磁盘**（容器休眠 / 重启即清空），`DATA_SAVE_MODE=file` 会丢数据。免费版部署强烈建议 `DATA_SAVE_MODE=redis` + Upstash（见下文 [数据持久化模式](#数据持久化模式)）。Render 付费 Disks 服务才支持 file 模式。
+
+### Netlify 部署
+
+仓库自带 `netlify.toml`，关联 GitHub 后 Netlify 会自动：
+- 安装根 + `webui/` 依赖，构建前端到 `webui/dist`
+- 把 `netlify/functions/api.js`（用 `serverless-http` 包 Express）作为 Functions 入口
+- 把所有 `/v1/*` `/v1beta/*` `/anthropic/*` `/api/*` `/verify` `/health` 重定向到该 Function，其余路径回退到 SPA `index.html`
+
+环境变量需要的设置（Site → Environment variables）：
+```
+API_KEY=sk-your-api-key-here
+ACCOUNTS=your-email@example.com:your-password
+DATA_SAVE_MODE=redis      # Netlify Functions 也是无持久磁盘
+REDIS_URL=https://...      # Upstash 或兼容 HTTP Redis
+REDIS_TOKEN=...
+```
+
+> ⚠️ **Netlify Functions 无持久磁盘**，与 Vercel 同理；务必用 `redis` 模式。
 
 ### 其他平台（Railway / Fly.io）
 
 Node.js 18+，先 `npm run build:webui` 再 `npm start` 即可。
+
+> Railway / Fly.io 默认有持久卷（volume）支持，可用 `DATA_SAVE_MODE=file`（需挂卷到 `data/`）；嫌麻烦也可以直接用 `redis` 模式，跨平台一致。
+
+> Cloudflare Workers / Pages Functions 暂不支持（不是 Node.js 运行时），路线图与 workaround 见 [docs/cloudflare-workers.md](docs/cloudflare-workers.md)。
+
+---
+
+## 贡献
+
+- 提交代码 / PR：见 [docs/contributing.md](docs/contributing.md)
+- 提交 issue：见 [docs/issues.md](docs/issues.md)
+- API 详细文档：见 [docs/api.md](docs/api.md)
+- 架构与功能实现：见 [docs/architecture.md](docs/architecture.md)
+- Cloudflare Workers 适配路线图：见 [docs/cloudflare-workers.md](docs/cloudflare-workers.md)
+
+## 致谢
+
+Tool calling 子系统的设计思路来自 **[CJackHwang/ds2api](https://github.com/CJackHwang/ds2api)**——一个用 prompt 注入 + DSML XML 解析让上游模型支持 OpenAI tools 协议的 Go 项目。本仓库参考了它的 DSML 标记选择、四级候选解析、流式 sieve 状态机思路并完整重写为 Node.js 实现，**未直接复用其代码**。感谢作者的开源工作给了我们一个可行参照。
 
 ---
 
@@ -335,7 +375,7 @@ cd webui && npm run dev                     # 开发
 | `DATA_SAVE_MODE` | `none`（内存）/ `file`（文件）/ `redis`（HTTP Redis） | `none` | — |
 | `REDIS_URL` | Redis HTTP 端点（仅 `redis` 模式；最高优先级） | — | — |
 | `REDIS_TOKEN` | Redis Bearer Token（仅 `redis` 模式；最高优先级） | — | — |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV 自动注入（无需手动配） | — | — |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel Marketplace 集成（Upstash for Redis）自动注入 | — | — |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash 控制台直连（兼容） | — | — |
 | `LISTEN_ADDRESS` | 监听地址 | 所有接口 | — |
 | `OUTPUT_THINK` | 输出思考内容 | `false` | — |
@@ -375,17 +415,17 @@ cd webui && npm run dev                     # 开发
 | 优先级 | 环境变量对 | 使用场景 |
 |---|---|---|
 | 1 | `REDIS_URL` + `REDIS_TOKEN` | 通用（推荐手动配置时使用） |
-| 2 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` | **Vercel KV / Vercel Marketplace 集成自动注入**，零手工配置 |
+| 2 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` | **Vercel Marketplace** 集成（如 Upstash for Redis）自动注入 |
 | 3 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Upstash 控制台直连 |
 
-> 所有三种实际上都是 **Upstash REST 协议**（Vercel KV 底层就是 Upstash）。如果你的 Redis 提供商不支持这个 HTTP 协议（比如自建 Redis、Aiven Redis），目前还不能用 `redis` 模式——可以走 `file` 模式部署到 VPS / Docker。
+> 三种凭证最终都走 **Upstash REST 协议**（HTTPS + JSON）。Vercel 已不再提供"原生 KV" —— 所谓"Vercel KV"现在是通过 [Vercel Marketplace](https://vercel.com/marketplace?category=storage) 集成的 **Upstash for Redis**，走的就是这套协议。如果你的 Redis 提供商只支持 RESP/TCP（自建 Redis / Aiven / Redis Cloud 直连），目前还不能用 `redis` 模式——可以走 `file` 模式部署到 VPS / Docker。
 
 #### Vercel 部署的三种 Redis 配置
 
-**方式 A：Vercel KV（最省事）**
+**方式 A：Vercel Marketplace 集成 Upstash for Redis（最省事）**
 
-1. Vercel 项目 → Storage → Create Database → KV
-2. 关联到本项目 → Vercel 自动注入 `KV_REST_API_URL` / `KV_REST_API_TOKEN`
+1. Vercel 项目 → **Storage** → **Create Database** → 选 **Upstash for Redis**
+2. 关联到本项目 → 自动注入 `KV_REST_API_URL` / `KV_REST_API_TOKEN`
 3. 仅需手动加 `DATA_SAVE_MODE=redis`，Redeploy
 
 **方式 B：Upstash 直连**

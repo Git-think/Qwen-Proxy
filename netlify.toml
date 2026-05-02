@@ -1,0 +1,62 @@
+# Netlify deploy config. Mirrors the Vercel setup: build the React webui
+# into webui/dist as the static publish dir, and route every dynamic
+# path to a single serverless function (netlify/functions/api.js)
+# which wraps our Express app.
+
+[build]
+  # Same script as vercel-build for parity. Netlify runs from repo root.
+  command   = "npm install && cd webui && npm install && npm run build"
+  publish   = "webui/dist"
+  functions = "netlify/functions"
+
+[functions]
+  # Node 18 runtime. Bumps and external module deps the function needs;
+  # serverless-http is bundled, axios + express + everything else is in
+  # node_modules and gets bundled by Netlify's esbuild step automatically.
+  node_bundler = "esbuild"
+
+# All API protocol prefixes, the admin endpoints, the verify probe, and
+# the health check go to the function. Pattern order matters — the
+# narrower API routes must precede the SPA fallback.
+[[redirects]]
+  from   = "/v1/*"
+  to     = "/.netlify/functions/api/v1/:splat"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/v1beta/*"
+  to     = "/.netlify/functions/api/v1beta/:splat"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/anthropic/*"
+  to     = "/.netlify/functions/api/anthropic/:splat"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/api/*"
+  to     = "/.netlify/functions/api/api/:splat"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/verify"
+  to     = "/.netlify/functions/api/verify"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/health"
+  to     = "/.netlify/functions/api/health"
+  status = 200
+  force  = true
+
+# SPA fallback: anything else (no extension) → index.html so the
+# React Router routes resolve client-side.
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

@@ -174,6 +174,26 @@ export default function Vercel() {
           </button>
         </div>
 
+        {/* Alternative-via-Redis hint. Some operators only enabled Vercel
+            sync to mutate ACCOUNTS / API_KEY env vars across deploys. If
+            they're already on DATA_SAVE_MODE=redis, account & proxy
+            state lives in redis and is mutable via the Admin page —
+            Vercel sync is purely optional in that flow. */}
+        <div className="glass-card p-4 mb-6 animate-slide-up border-l-2 border-l-accent-primary/30">
+          <h4 className="text-sm font-semibold text-white mb-1 flex items-center gap-2">
+            <svg className="w-4 h-4 text-accent-glow" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            可以不配 Vercel 同步吗？
+          </h4>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            可以。Vercel 同步的主要用途是把 <code className="text-accent-glow">ACCOUNTS</code> 写回 Vercel env 让重部署后保留。
+            如果你已经启用了 <code className="text-accent-glow">DATA_SAVE_MODE=redis</code>，账号和代理状态会直接持久化到 Redis，
+            通过 <a href="/admin" className="text-accent-glow hover:underline">管理面板</a>就能增删改，无需 Vercel 同步面板。
+            两种方式选一个即可，redis 模式更通用且适用于其他 serverless 平台。
+          </p>
+        </div>
+
         {/* Status Card */}
         <div className="glass-card p-5 mb-6 animate-slide-up">
           <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">

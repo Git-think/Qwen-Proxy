@@ -77,8 +77,14 @@ const config = {
     proxies: parseProxies(),
     // Maximum upstream-request retries when network errors look proxy-related
     proxyMaxRetries: Math.max(1, parseInt(process.env.PROXY_MAX_RETRIES) || 3),
-    // Vercel/serverless mode detection
-    isServerless: !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+    // Serverless platform detection — Vercel, Netlify, AWS Lambda all
+    // share the same "ephemeral container, no persistent disk" property
+    // that makes DATA_SAVE_MODE=file unsafe.
+    isServerless: !!(
+        process.env.VERCEL
+        || process.env.NETLIFY
+        || process.env.AWS_LAMBDA_FUNCTION_NAME
+    )
 }
 
 module.exports = config
