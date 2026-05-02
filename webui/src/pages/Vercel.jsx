@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getApiKey } from '../utils/storage'
 import { API_ENDPOINTS } from '../utils/constants'
+import { vercelSyncNow } from '../utils/api'
 import { useToast } from '../hooks/useToast'
 
 function fetchWithAuth(url, options = {}) {
@@ -24,6 +25,9 @@ export default function Vercel() {
   const [editingEnv, setEditingEnv] = useState(null)
   const [editValue, setEditValue] = useState('')
   const [quickForm, setQuickForm] = useState({ API_KEY: '', ACCOUNTS: '', DATA_SAVE_MODE: '' })
+  // sync-now panel
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncScopes, setSyncScopes] = useState({ accounts: true, disabled: true, proxies: true })
   const { toast } = useToast()
 
   const loadStatus = useCallback(async () => {
@@ -119,6 +123,30 @@ export default function Vercel() {
       toast.error(err.message)
     } finally {
       setDeploying(false)
+    }
+  }
+
+  const handleSyncNow = async () => {
+    const scopes = Object.keys(syncScopes).filter(k => syncScopes[k])
+    if (scopes.length === 0) {
+      toast.error('请至少选择一项要同步的内容')
+      return
+    }
+    setSyncBusy(true)
+    try {
+      const res = await vercelSyncNow(scopes)
+      const summary = []
+      for (const [k, v] of Object.entries(res.result || {})) {
+        if (v.synced) summary.push(`${k}: ${v.count ?? '✓'}`)
+        else if (v.reason === 'redis_active') summary.push(`${k}: 跳过（已用 Redis）`)
+        else if (v.reason === 'vercel_not_configured') summary.push(`${k}: 跳过（未配 Vercel）`)
+        else summary.push(`${k}: 失败`)
+      }
+      toast.success(`同步完成：${summary.join('，')}（Vercel 将自动重新部署）`)
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setSyncBusy(false)
     }
   }
 
@@ -306,6 +334,59 @@ export default function Vercel() {
             </div>
           )}
         </div>
+
+        {/* Manual sync-now panel. Each Vercel env write triggers a fresh
+            build (~60s), so add/delete actions on the Admin page no longer
+            push automatically — operator batches and clicks here when
+            they're ready. */}
+        {status?.configured && !status?.redisConfigured && (
+          <div className="glass-card p-5 mb-6 animate-slide-up">
+            <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-accent-glow" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              立即同步到 Vercel 环境变量
+            </h3>
+            <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+              把当前内存中的账号 / 禁用列表 / 代理推送到 Vercel 项目环境变量，让下次冷启动恢复。
+              <span className="text-amber-300/80">每次同步会触发一次新构建（约 1 分钟），请批量操作完再点。</span>
+            </p>
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              {[
+                { key: 'accounts', label: 'ACCOUNTS' },
+                { key: 'disabled', label: 'DISABLED_ACCOUNTS' },
+                { key: 'proxies', label: 'PROXIES' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!syncScopes[key]}
+                    onChange={(e) => setSyncScopes(prev => ({ ...prev, [key]: e.target.checked }))}
+                    className="w-3.5 h-3.5 rounded border-white/20 bg-white/[0.06]"
+                  />
+                  <code className="font-mono">{label}</code>
+                </label>
+              ))}
+            </div>
+            <button
+              onClick={handleSyncNow}
+              disabled={syncBusy}
+              className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50"
+            >
+              {syncBusy ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  同步中...
+                </>
+              ) : (
+                '立即同步'
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Quick Settings */}
         {status?.configured && (

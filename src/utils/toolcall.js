@@ -82,7 +82,8 @@ function deobfuscateToolName(name) {
 
 /* ---------------- prompt build ---------------- */
 function buildToolPromptBlock(tools) {
-  const decls = (tools || []).map(t => {
+  const toolList = tools || []
+  const decls = toolList.map(t => {
     const fn = t.function || t
     const originalName = (fn && fn.name) || ''
     const name = obfuscateToolName(originalName)
@@ -93,8 +94,21 @@ function buildToolPromptBlock(tools) {
     return `- ${name}: ${desc}\n  parameters: ${paramsBlock}`
   }).join('\n')
 
+  // Enumerate every tool name once at the top AND once at the bottom.
+  // Larger Qwen variants (notably qwen3.6-plus) sometimes refuse with
+  // "Tool X does not exist." even when X is declared in the prompt —
+  // they second-guess names they didn't see in pre-training. Stating
+  // the allow-list twice + an explicit assertion that every listed
+  // tool is real measurably improves their compliance rate.
+  const namesList = toolList
+    .map(t => obfuscateToolName(((t.function || t) || {}).name || ''))
+    .filter(Boolean)
+  const namesLine = namesList.length > 0 ? namesList.join(', ') : '(none)'
+
   return [
-    'You may call tools. When you decide to call a tool, output the call EXACTLY in this format and stop:',
+    `AVAILABLE TOOLS (whitelist, all are real and callable): ${namesLine}`,
+    '',
+    'You may call any of the tools above. When you decide to call a tool, output the call EXACTLY in this format and stop:',
     '',
     '<|DSML|tool_calls>',
     '  <|DSML|invoke name="TOOL_NAME">',
@@ -109,8 +123,10 @@ function buildToolPromptBlock(tools) {
     '4. Use only parameter names from the schemas below.',
     '5. Do NOT wrap in markdown fences. Do NOT explain.',
     '6. If you call a tool, the block must be the last thing you output.',
+    `7. EVERY tool listed above (${namesLine}) IS REAL and IS available right now. Do NOT respond with "tool X does not exist" — that response is incorrect. If a user asks you to call a tool by name and that name is in the whitelist, call it. If you are uncertain about the parameters, fill in the best-guess values matching the schema rather than refusing.`,
+    '8. Tool names are case-sensitive. Use the exact spelling from the whitelist above.',
     '',
-    'Tools available:',
+    'Tools available (full schemas):',
     decls,
   ].join('\n')
 }

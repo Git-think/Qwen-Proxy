@@ -4,6 +4,8 @@ const axios = require('axios')
 const { adminKeyVerify } = require('../middlewares/authorization')
 const redisClient = require('../utils/redis-client')
 const config = require('../config/index.js')
+const accountManager = require('../utils/account.js')
+const { syncAccountsToVercel, syncProxiesToVercel, syncDisabledAccountsToVercel } = require('../utils/vercel-sync')
 const { logger } = require('../utils/logger')
 
 function getVercelConfig() {
@@ -152,6 +154,41 @@ router.post('/vercel/redeploy', adminKeyVerify, async (req, res) => {
   } catch (error) {
     logger.error('触发 Vercel 重新部署失败', 'VERCEL', '', error.message)
     res.status(500).json({ error: error.response?.data?.error?.message || error.message })
+  }
+})
+
+/**
+ * POST /vercel/syncNow - Manually push current in-memory state into the
+ * Vercel project's env vars. Operator-driven (each env write triggers a
+ * fresh build, ~60s startup) — auto-sync on every mutation would amplify
+ * deploys and slow the system down.
+ *
+ * Body: { scopes?: ['accounts'|'proxies'|'disabled'] }
+ *   - omitted / 'all' / [] → sync all three
+ *
+ * Per-scope result object: { synced: bool, count?: number, reason?: string }
+ */
+router.post('/vercel/syncNow', adminKeyVerify, async (req, res) => {
+  try {
+    const requested = req.body && req.body.scopes
+    const all = !requested || requested === 'all' || (Array.isArray(requested) && requested.length === 0)
+    const wants = (name) => all || (Array.isArray(requested) && requested.includes(name))
+
+    const result = {}
+    if (wants('accounts')) {
+      result.accounts = await syncAccountsToVercel(accountManager.getAllAccountKeys())
+    }
+    if (wants('disabled')) {
+      result.disabled = await syncDisabledAccountsToVercel(accountManager.getDisabledEmails())
+    }
+    if (wants('proxies')) {
+      const list = accountManager.proxyPool ? accountManager.proxyPool.list().map(p => p.url) : []
+      result.proxies = await syncProxiesToVercel(list)
+    }
+    res.json({ success: true, result })
+  } catch (error) {
+    logger.error('Vercel syncNow failed', 'VERCEL', '', error)
+    res.status(500).json({ error: error.message })
   }
 })
 

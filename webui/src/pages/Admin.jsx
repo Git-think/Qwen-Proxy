@@ -54,14 +54,8 @@ export default function Admin() {
     if (!url) return
     setProxyBusy(true)
     try {
-      const res = await addProxy(url)
-      if (res.sync && res.sync.synced) {
-        toast.success(`已添加并同步到 Vercel 环境变量`)
-      } else if (res.sync && res.sync.reason === 'redis_active') {
-        toast.success(`已添加（持久化到 Redis）`)
-      } else {
-        toast.success(`已添加 ${url}`)
-      }
+      await addProxy(url)
+      toast.success(`已添加 ${url}`)
       setNewProxyUrl('')
       await loadProxies()
     } catch (err) {
@@ -140,16 +134,8 @@ export default function Admin() {
 
   const handleToggleDisabled = async (em, disabled) => {
     try {
-      const res = await setAccountDisabled(em, disabled)
-      // surface the persistence path so the operator knows where the
-      // toggle landed (file/redis vs Vercel env vs in-memory only)
-      if (res?.sync?.synced) {
-        toast.success(`${disabled ? '已禁用' : '已启用'} ${em}（已同步到 Vercel）`)
-      } else if (res?.sync?.reason === 'redis_active') {
-        toast.success(`${disabled ? '已禁用' : '已启用'} ${em}（已写入 Redis）`)
-      } else {
-        toast.success(`${disabled ? '已禁用' : '已启用'} ${em}`)
-      }
+      await setAccountDisabled(em, disabled)
+      toast.success(`${disabled ? '已禁用' : '已启用'} ${em}`)
       loadAccounts()
     } catch (err) {
       toast.error(err.message)

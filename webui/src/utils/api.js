@@ -78,6 +78,20 @@ export async function setAccountDisabled(email, disabled) {
   })
 }
 
+/**
+ * Manually push the current in-memory accounts / proxies / disabled list
+ * to the Vercel project's env vars. Triggers a Vercel build as a side
+ * effect (~60s startup), which is why we don't auto-sync on every
+ * mutation.
+ * @param {Array<'accounts'|'proxies'|'disabled'>|'all'} [scopes]
+ */
+export async function vercelSyncNow(scopes) {
+  return apiFetch('/api/vercel/syncNow', {
+    method: 'POST',
+    body: JSON.stringify({ scopes: scopes || 'all' }),
+  })
+}
+
 /* ----- smart proxy pool ----- */
 
 export async function fetchProxies() {

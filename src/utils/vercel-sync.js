@@ -129,8 +129,48 @@ async function syncDisabledAccountsToVercel(emails) {
   }
 }
 
+/**
+ * Push the full account roster to the Vercel project's ACCOUNTS env var.
+ * Encoded as `email1:password1,email2:password2,...`. Same gating as the
+ * other sync helpers.
+ *
+ * Use this from the admin add/delete-account endpoints so the roster
+ * survives Vercel cold starts without requiring redis. Tokens themselves
+ * are NOT included — the env var carries credentials only, and tokens
+ * are re-derived by signing in on cold start.
+ */
+async function syncAccountsToVercel(accounts) {
+  const gate = shouldSync()
+  if (!gate.ok) return { synced: false, reason: gate.reason }
+  try {
+    const seen = new Set()
+    const parts = []
+    for (const acc of accounts || []) {
+      const email = acc && acc.email ? String(acc.email).trim() : ''
+      const password = acc && acc.password ? String(acc.password) : ''
+      if (!email || !password) continue
+      if (seen.has(email)) continue
+      seen.add(email)
+      // Comma is the entry separator and colon is the field separator,
+      // so reject pathological emails / passwords containing them rather
+      // than silently mangling the env var. The signin form rejects them
+      // upstream too, so this is just defense-in-depth.
+      if (email.includes(',') || password.includes(',')) continue
+      parts.push(`${email}:${password}`)
+    }
+    const value = parts.join(',')
+    await _writeEnv('ACCOUNTS', value)
+    logger.success(`Synced ACCOUNTS to Vercel (${parts.length} entries)`, 'VERCEL')
+    return { synced: true, count: parts.length }
+  } catch (err) {
+    logger.error(`Vercel ACCOUNTS sync failed: ${err.message}`, 'VERCEL')
+    return { synced: false, reason: 'api_error', error: err.message }
+  }
+}
+
 module.exports = {
   syncProxiesToVercel,
   syncDisabledAccountsToVercel,
+  syncAccountsToVercel,
   shouldSync,
 }

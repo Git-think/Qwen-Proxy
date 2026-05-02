@@ -4,7 +4,7 @@ const accountManager = require('../utils/account')
 const { logger } = require('../utils/logger')
 const { JwtDecode } = require('../utils/tools')
 const { adminKeyVerify } = require('../middlewares/authorization')
-const { syncProxiesToVercel, syncDisabledAccountsToVercel } = require('../utils/vercel-sync')
+const { syncProxiesToVercel, syncDisabledAccountsToVercel, syncAccountsToVercel } = require('../utils/vercel-sync')
 
 /**
  * GET /getAllAccounts - Get all accounts (paginated)
@@ -48,6 +48,12 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
 
 /**
  * POST /setAccount - Add account
+ *
+ * On success the full roster is mirrored back to the Vercel project's
+ * ACCOUNTS env var (when on a non-redis serverless deploy with Vercel
+ * sync configured) so the new account survives the next cold start
+ * without needing manual env editing. Skipped on redis (already
+ * persisted there) and when Vercel sync isn't configured.
  */
 router.post('/setAccount', adminKeyVerify, async (req, res) => {
   try {
@@ -73,6 +79,9 @@ router.post('/setAccount', adminKeyVerify, async (req, res) => {
     const success = await accountManager.addAccountWithToken(email, password, authToken, expires)
 
     if (success) {
+      // NOTE: deliberately NOT auto-syncing to Vercel here. Pushing
+      // ACCOUNTS env triggers a fresh build (~60s); operators prefer to
+      // batch changes and manually sync via the Vercel page button.
       res.status(200).json({ email, message: 'Account created successfully' })
     } else {
       res.status(500).json({ error: 'Account creation failed' })
@@ -98,6 +107,7 @@ router.delete('/deleteAccount', adminKeyVerify, async (req, res) => {
     const success = accountManager.deleteAccount(email)
 
     if (success) {
+      // NOTE: no auto Vercel sync — see /setAccount comment above.
       res.json({ message: 'Account deleted successfully' })
     } else {
       res.status(500).json({ error: 'Account deletion failed' })
@@ -178,8 +188,8 @@ router.post('/disableAccount', adminKeyVerify, async (req, res) => {
     if (!ok) {
       return res.status(404).json({ error: `Account not found: ${email}` })
     }
-    const sync = await syncDisabledAccountsToVercel(accountManager.getDisabledEmails())
-    res.json({ success: true, email, disabled: !!disabled, sync })
+    // No auto Vercel sync — operator triggers it from the Vercel page.
+    res.json({ success: true, email, disabled: !!disabled })
   } catch (error) {
     logger.error('Failed to toggle account disabled', 'ACCOUNT', '', error)
     res.status(500).json({ error: error.message })
@@ -221,9 +231,9 @@ router.post('/proxy/add', adminKeyVerify, async (req, res) => {
       return res.status(400).json({ error: 'Proxy pool not initialized' })
     }
     const ok = await accountManager.proxyPool.addProxy(url.trim())
-    const proxies = accountManager.proxyPool.list().map(p => p.url)
-    const sync = await syncProxiesToVercel(proxies)
-    res.json({ success: ok, url, sync })
+    // Persistence (file/redis) handled inside addProxy. No auto Vercel
+    // sync — operator triggers it from the Vercel page.
+    res.json({ success: ok, url })
   } catch (error) {
     logger.error('Failed to add proxy', 'PROXY', '', error)
     res.status(500).json({ error: error.message })
@@ -233,8 +243,6 @@ router.post('/proxy/add', adminKeyVerify, async (req, res) => {
 /**
  * DELETE /proxy - Remove a proxy from the pool (admin).
  * Body: { url }
- *
- * Same Vercel-env-sync semantics as POST /proxy/add.
  */
 router.delete('/proxy', adminKeyVerify, async (req, res) => {
   try {
@@ -246,9 +254,7 @@ router.delete('/proxy', adminKeyVerify, async (req, res) => {
       return res.status(400).json({ error: 'Proxy pool not initialized' })
     }
     const ok = await accountManager.proxyPool.removeProxy(url)
-    const proxies = accountManager.proxyPool.list().map(p => p.url)
-    const sync = await syncProxiesToVercel(proxies)
-    res.json({ success: ok, url, sync })
+    res.json({ success: ok, url })
   } catch (error) {
     logger.error('Failed to remove proxy', 'PROXY', '', error)
     res.status(500).json({ error: error.message })
