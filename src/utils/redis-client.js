@@ -1,34 +1,41 @@
 'use strict'
 
 /**
- * Tiny Upstash-Redis-REST client.
+ * Tiny Redis-over-HTTP client.
  *
- * Upstash exposes Redis over HTTPS (https://upstash.com/docs/redis/features/restapi)
- * which fits Vercel / Netlify / Cloudflare Workers serverless lifecycles
- * better than a TCP-based redis client — no connection pool to drag
- * across cold starts, no socket auth handshake on every invocation.
+ * The protocol we speak is the one Upstash exposes
+ * (https://upstash.com/docs/redis/features/restapi). Vercel KV is
+ * Upstash-backed and 100% compatible. Other "Redis" providers that
+ * speak RESP-over-TCP are NOT compatible — those need a redis:// URL
+ * + ioredis client (out of scope for this serverless-friendly path).
  *
- * We support a value-as-JSON shape (one big blob per key) which is
- * sufficient for our < 5 MB use case (accounts + proxy state). For
- * higher-volume keys you'd want HSET-shaped operations; not needed here.
+ * Connection config is resolved in this priority order so the operator
+ * never has to manually rename Vercel's auto-injected vars:
+ *   1. REDIS_URL + REDIS_TOKEN            — generic, recommended
+ *   2. KV_REST_API_URL + KV_REST_API_TOKEN — Vercel KV (auto-injected
+ *      when the Vercel KV / Upstash integration is attached)
+ *   3. UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN — Upstash
+ *      console "REST API" tab values
  *
- * Configure via:
- *   UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
- *   UPSTASH_REDIS_REST_TOKEN=AXxxxxx
- *
- * The client is a no-op when those env vars are missing — callers should
+ * The client is a no-op when no source is configured — callers should
  * guard via config.dataSaveMode === 'redis' before invoking it.
  */
 
 const axios = require('axios')
 const { logger } = require('./logger')
 
-const URL_ENV = 'UPSTASH_REDIS_REST_URL'
-const TOKEN_ENV = 'UPSTASH_REDIS_REST_TOKEN'
-
 function getConfig() {
-  const baseUrl = process.env[URL_ENV] && String(process.env[URL_ENV]).replace(/\/+$/, '')
-  const token = process.env[TOKEN_ENV]
+  const url =
+    process.env.REDIS_URL ||
+    process.env.KV_REST_API_URL ||
+    process.env.UPSTASH_REDIS_REST_URL ||
+    ''
+  const token =
+    process.env.REDIS_TOKEN ||
+    process.env.KV_REST_API_TOKEN ||
+    process.env.UPSTASH_REDIS_REST_TOKEN ||
+    ''
+  const baseUrl = url ? String(url).replace(/\/+$/, '') : ''
   return { baseUrl, token, ok: !!(baseUrl && token) }
 }
 
@@ -38,7 +45,7 @@ function isConfigured() {
 
 async function _post(path, body) {
   const { baseUrl, token, ok } = getConfig()
-  if (!ok) throw new Error(`Upstash Redis not configured (${URL_ENV} / ${TOKEN_ENV} missing)`)
+  if (!ok) throw new Error('Redis not configured (set REDIS_URL + REDIS_TOKEN, or KV_REST_API_*, or UPSTASH_REDIS_REST_*)')
   const res = await axios.post(`${baseUrl}${path}`, body, {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     timeout: 10000,
@@ -48,7 +55,7 @@ async function _post(path, body) {
 
 async function _get(path) {
   const { baseUrl, token, ok } = getConfig()
-  if (!ok) throw new Error(`Upstash Redis not configured (${URL_ENV} / ${TOKEN_ENV} missing)`)
+  if (!ok) throw new Error('Redis not configured (set REDIS_URL + REDIS_TOKEN, or KV_REST_API_*, or UPSTASH_REDIS_REST_*)')
   const res = await axios.get(`${baseUrl}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
     timeout: 10000,

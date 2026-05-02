@@ -332,9 +332,11 @@ cd webui && npm run dev                     # 开发
 | `API_KEY` | API 密钥，逗号分隔，第一个为管理员 | — | ✅ |
 | `ACCOUNTS` | 账号 `email:pass,email2:pass2` | — | ✅ |
 | `SERVICE_PORT` | 端口 | `3000` | — |
-| `DATA_SAVE_MODE` | `none`（内存）/ `file`（文件）/ `redis`（Upstash） | `none` | — |
-| `UPSTASH_REDIS_REST_URL` | Upstash REST 地址（仅 `redis` 模式） | — | — |
-| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST Token（仅 `redis` 模式） | — | — |
+| `DATA_SAVE_MODE` | `none`（内存）/ `file`（文件）/ `redis`（HTTP Redis） | `none` | — |
+| `REDIS_URL` | Redis HTTP 端点（仅 `redis` 模式；最高优先级） | — | — |
+| `REDIS_TOKEN` | Redis Bearer Token（仅 `redis` 模式；最高优先级） | — | — |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV 自动注入（无需手动配） | — | — |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash 控制台直连（兼容） | — | — |
 | `LISTEN_ADDRESS` | 监听地址 | 所有接口 | — |
 | `OUTPUT_THINK` | 输出思考内容 | `false` | — |
 | `SEARCH_INFO_MODE` | 搜索显示 `text` / `table` | `text` | — |
@@ -362,21 +364,49 @@ cd webui && npm run dev                     # 开发
 |---|---|---|
 | `none`（默认） | 任何平台 | 内存；重启即丢，账号靠 `ACCOUNTS` env 重新登录 |
 | `file` | 本地 / Docker / VPS / Render | `data/data.json` |
-| `redis` | **Vercel / Netlify / Cloudflare Workers** 等 serverless | Upstash Redis REST（HTTPS） |
+| `redis` | **Vercel / Netlify / Cloudflare Workers** 等 serverless | Redis-over-HTTP（兼容 Upstash REST 协议） |
 
 > ⚠️ **Vercel 不支持 `file` 模式**：serverless 容器无持久磁盘，每次冷启动 `data/data.json` 都会丢失，账号 token 和代理状态都会重置。Vercel 部署请用 `redis` 模式。
 
-#### Vercel + Upstash Redis 配置步骤
+#### Redis 模式：三种凭证来源（按优先级）
 
-1. 在 [console.upstash.com](https://console.upstash.com) 创建一个 Redis 数据库（免费档够用）
-2. 在数据库的 **REST API** 选项卡复制 `UPSTASH_REDIS_REST_URL` 与 `UPSTASH_REDIS_REST_TOKEN`
-3. 在 Vercel 项目 Settings → Environment Variables 添加：
+后端按以下顺序自动检测，**任选其一即可**：
+
+| 优先级 | 环境变量对 | 使用场景 |
+|---|---|---|
+| 1 | `REDIS_URL` + `REDIS_TOKEN` | 通用（推荐手动配置时使用） |
+| 2 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` | **Vercel KV / Vercel Marketplace 集成自动注入**，零手工配置 |
+| 3 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Upstash 控制台直连 |
+
+> 所有三种实际上都是 **Upstash REST 协议**（Vercel KV 底层就是 Upstash）。如果你的 Redis 提供商不支持这个 HTTP 协议（比如自建 Redis、Aiven Redis），目前还不能用 `redis` 模式——可以走 `file` 模式部署到 VPS / Docker。
+
+#### Vercel 部署的三种 Redis 配置
+
+**方式 A：Vercel KV（最省事）**
+
+1. Vercel 项目 → Storage → Create Database → KV
+2. 关联到本项目 → Vercel 自动注入 `KV_REST_API_URL` / `KV_REST_API_TOKEN`
+3. 仅需手动加 `DATA_SAVE_MODE=redis`，Redeploy
+
+**方式 B：Upstash 直连**
+
+1. [console.upstash.com](https://console.upstash.com) 创建 Redis 数据库
+2. **REST API** 选项卡复制 URL 和 Token
+3. Vercel Environment Variables 添加：
    ```
    DATA_SAVE_MODE=redis
    UPSTASH_REDIS_REST_URL=https://xxxxx.upstash.io
    UPSTASH_REDIS_REST_TOKEN=AXxxxxxxxxxxxxxxxxxxxxxxx
    ```
-4. Redeploy。重启后账号 token、代理绑定都会从 Redis 恢复
+
+**方式 C：通用 REDIS_URL**
+
+任何兼容 Upstash REST 协议的服务（包括上面两种）都可以用通用名：
+```
+DATA_SAVE_MODE=redis
+REDIS_URL=https://your-endpoint
+REDIS_TOKEN=your-bearer-token
+```
 
 ---
 

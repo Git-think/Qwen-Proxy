@@ -29,7 +29,7 @@ class DataPersistence {
       logger.warn('DATA_SAVE_MODE=file on a serverless platform — data will not persist across cold starts. Switch to DATA_SAVE_MODE=redis with Upstash for persistence.', 'DATA')
     }
     if (config.dataSaveMode === 'redis' && !redisClient.isConfigured()) {
-      logger.warn('DATA_SAVE_MODE=redis but UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set — falling back to in-memory.', 'DATA')
+      logger.warn('DATA_SAVE_MODE=redis but no Redis credentials found (set REDIS_URL+REDIS_TOKEN, or KV_REST_API_*, or UPSTASH_REDIS_REST_*) — falling back to in-memory.', 'DATA')
     }
   }
 
