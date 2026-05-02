@@ -108,7 +108,29 @@ async function syncProxiesToVercel(proxyUrls) {
   }
 }
 
+/**
+ * Push the operator-managed disabled-account list to the Vercel project's
+ * DISABLED_ACCOUNTS env var. Same gating as syncProxiesToVercel — skipped
+ * on redis (which already covers persistence) and when Vercel sync isn't
+ * configured.
+ */
+async function syncDisabledAccountsToVercel(emails) {
+  const gate = shouldSync()
+  if (!gate.ok) return { synced: false, reason: gate.reason }
+  try {
+    const list = [...new Set((emails || []).filter(Boolean))]
+    const value = list.join(',')
+    await _writeEnv('DISABLED_ACCOUNTS', value)
+    logger.success(`Synced DISABLED_ACCOUNTS to Vercel (${list.length} entries)`, 'VERCEL')
+    return { synced: true, count: list.length }
+  } catch (err) {
+    logger.error(`Vercel DISABLED_ACCOUNTS sync failed: ${err.message}`, 'VERCEL')
+    return { synced: false, reason: 'api_error', error: err.message }
+  }
+}
+
 module.exports = {
   syncProxiesToVercel,
+  syncDisabledAccountsToVercel,
   shouldSync,
 }

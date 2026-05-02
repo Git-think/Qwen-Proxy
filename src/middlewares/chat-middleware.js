@@ -1,5 +1,6 @@
 const { generateUUID } = require('../utils/tools.js')
 const { isChatType, isThinkingEnabled, parserModel, parserMessages } = require('../utils/chat-helpers.js')
+const accountManager = require('../utils/account.js')
 const { logger } = require('../utils/logger')
 const {
   hasTools,
@@ -43,6 +44,16 @@ function injectToolCallContext(messages, tools) {
  */
 const processRequestBody = async (req, res, next) => {
   try {
+    // Wait for the account manager's first signin to land before doing
+    // anything else. parserMessages → normalizeMediaContentItem →
+    // uploadFileToQwenOss needs a token; without this guard the very
+    // first concurrent requests on a Vercel cold start fail with
+    // "Missing required upload parameters" and the user sees the model
+    // get a [image] text placeholder instead of the real image.
+    if (typeof accountManager.ensureInitialized === 'function') {
+      try { await accountManager.ensureInitialized() } catch { /* fall through */ }
+    }
+
     const body = {
       "stream": true,
       "incremental_output": true,

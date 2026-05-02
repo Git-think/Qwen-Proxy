@@ -48,6 +48,20 @@ const parseProxies = () => {
     return out
 }
 
+/**
+ * Parse a list of emails (comma or newline separated). Used by the
+ * disabled-account list — see DISABLED_ACCOUNTS env. Stored separately
+ * from ACCOUNTS so toggling disabled is reversible without losing the
+ * email/password credential.
+ */
+const parseEmailList = (raw) => {
+    if (!raw) return []
+    return String(raw)
+        .split(/[,\n]/)
+        .map(s => s.trim())
+        .filter(Boolean)
+}
+
 const { apiKeys, adminKey } = parseApiKeys()
 
 const config = {
@@ -75,6 +89,12 @@ const config = {
     // Smart proxy pool: list of proxy URLs (PROXIES env + PROXY_URL fallback,
     // deduped). Each account gets bound to one entry from this pool.
     proxies: parseProxies(),
+    // Disabled-account email allow-list. Accounts whose email matches
+    // any entry here are kept in the list (so toggling back on doesn't
+    // lose password) but skipped by the rotator. The list is editable
+    // at runtime via the admin API; serverless deploys also persist it
+    // back to a Vercel env var so it survives cold starts.
+    disabledAccounts: parseEmailList(process.env.DISABLED_ACCOUNTS),
     // Maximum upstream-request retries when network errors look proxy-related
     proxyMaxRetries: Math.max(1, parseInt(process.env.PROXY_MAX_RETRIES) || 3),
     // Serverless platform detection — Vercel, Netlify, AWS Lambda all

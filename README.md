@@ -257,43 +257,65 @@ Tool calling 子系统的设计思路来自 **[CJackHwang/ds2api](https://github
 ```
 项目根目录/
 ├── api/index.js              # Vercel Serverless 入口
+├── netlify/
+│   └── functions/api.js      # Netlify Functions 入口（serverless-http 包 Express）
+├── netlify.toml              # Netlify build + redirects
+├── docs/                     # 详细文档
+│   ├── api.md                # 三协议 API 全量参考
+│   ├── architecture.md       # 架构与功能实现
+│   ├── contributing.md       # 提交代码 / PR 流程
+│   ├── issues.md             # 提交 Issue 模板
+│   └── cloudflare-workers.md # CF Workers 适配路线图
 ├── src/
 │   ├── adapters/
 │   │   ├── anthropic.js      # Anthropic ↔ OpenAI 转换 + SSE 重写
 │   │   └── gemini.js         # Gemini ↔ OpenAI 转换 + SSE 重写
-│   ├── config/index.js       # 环境变量配置
+│   ├── config/index.js       # 环境变量配置（含代理列表 / 禁用账号）
 │   ├── controllers/          # 控制器（聊天、图片视频、模型）
-│   ├── middlewares/          # 中间件（鉴权、格式转换）
+│   ├── middlewares/          # 中间件（鉴权、tool-call gate、格式转换）
 │   ├── models/models-map.js  # 动态模型获取与缓存
 │   ├── routes/
 │   │   ├── chat.js           # /v1/chat/completions、images、videos
 │   │   ├── anthropic.js      # /v1/messages、/anthropic/v1/messages
 │   │   ├── gemini.js         # /v1(beta)/models/{model}:generate*
 │   │   ├── models.js         # /v1/models
-│   │   ├── accounts.js       # /api/* 账号管理
+│   │   ├── accounts.js       # /api/* 账号 + 智能代理 + 禁用切换
 │   │   ├── verify.js         # /verify
-│   │   └── vercel.js         # Vercel 专属辅助接口
+│   │   └── vercel.js         # Vercel 同步面板辅助接口
 │   ├── utils/
-│   │   ├── account.js        # 账号管理器（核心单例）
-│   │   ├── account-rotator.js # LRU 负载均衡
+│   │   ├── account.js        # 账号管理器（核心单例 + 禁用切换）
+│   │   ├── account-rotator.js # LRU 负载均衡（跳过 disabled）
 │   │   ├── token-manager.js  # Token 登录/验证/刷新
-│   │   ├── data-persistence.js # 存储层（none/file）
-│   │   ├── request.js        # 上游 HTTP 请求
+│   │   ├── data-persistence.js # 存储层（none / file / redis）
+│   │   ├── redis-client.js   # Upstash REST Redis 客户端
+│   │   ├── proxy-helper.js   # http(s) / socks5 代理 agent 工厂
+│   │   ├── proxy-pool.js     # 智能代理池（四级优先 + 故障转移 + 持久化）
+│   │   ├── vercel-sync.js    # 把代理 / 禁用列表 写回 Vercel env（serverless 持久化）
+│   │   ├── request.js        # 上游 HTTP 请求 + 代理重试循环
+│   │   ├── toolcall.js       # DSML tool-call prompt + 流式 sieve + JSON repair
 │   │   ├── chat-helpers.js   # 消息解析与模型匹配
 │   │   ├── cookie-generator.js # ssxmod Cookie（LZW 压缩）
 │   │   ├── fingerprint.js    # 浏览器指纹合成
 │   │   ├── ssxmod-manager.js # Cookie 生命周期（15分钟刷新）
-│   │   ├── proxy-helper.js   # 代理配置
 │   │   ├── upload.js         # 阿里云 OSS 上传
+│   │   ├── precise-tokenizer.js # token usage 估算
 │   │   ├── logger.js         # 日志
 │   │   └── tools.js          # SHA-256 / JWT / UUID
 │   ├── server.js             # Express 应用
 │   └── start.js              # 启动器
-├── webui/                    # React 前端管理面板（Vite + Tailwind）
-├── vercel.json               # 同时构建前端 + 部署 Serverless
+├── webui/                    # React 前端（Vite + Tailwind）
+│   ├── src/
+│   │   ├── pages/            # Login / Chat / Admin / Docs / Vercel
+│   │   ├── components/       # Sidebar / AccountCard / MessageBubble / ...
+│   │   ├── hooks/            # useChat / useApi / useToast
+│   │   └── utils/            # api / storage / constants / markdown
+│   ├── vite.config.js        # 构建期 inject 版本号
+│   └── package.json
+├── vercel.json               # Vercel build + SPA rewrites
 ├── Dockerfile
 ├── docker-compose.yml
-├── package.json
+├── .github/workflows/        # docker-build / release / quality-gates
+├── package.json              # 改 version 即触发 release.yml
 └── .env.example
 ```
 

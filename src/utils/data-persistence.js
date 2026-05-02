@@ -159,7 +159,12 @@ class DataPersistence {
       email,
       password: accountData.password,
       token: accountData.token,
-      expires: accountData.expires
+      expires: accountData.expires,
+      // Preserve disabled flag across saves so single-account writes
+      // don't clobber the operator's toggle.
+      disabled: accountData.disabled === undefined
+        ? (existingIndex !== -1 ? !!data.accounts[existingIndex].disabled : false)
+        : !!accountData.disabled,
     }
 
     if (existingIndex !== -1) {
@@ -184,7 +189,8 @@ class DataPersistence {
         email: account.email,
         password: account.password,
         token: account.token,
-        expires: account.expires
+        expires: account.expires,
+        disabled: !!account.disabled,
       }))
     }
 
@@ -232,11 +238,15 @@ class DataPersistence {
   async _saveAccountToRedis(email, accountData) {
     const blob = await this._readRedisBlob()
     const idx = blob.accounts.findIndex(a => a.email === email)
+    const prev = idx >= 0 ? blob.accounts[idx] : null
     const updated = {
       email,
       password: accountData.password,
       token: accountData.token,
       expires: accountData.expires,
+      disabled: accountData.disabled === undefined
+        ? !!(prev && prev.disabled)
+        : !!accountData.disabled,
     }
     if (idx >= 0) blob.accounts[idx] = updated
     else blob.accounts.push(updated)
@@ -250,6 +260,7 @@ class DataPersistence {
       password: a.password,
       token: a.token,
       expires: a.expires,
+      disabled: !!a.disabled,
     }))
     return this._writeRedisBlob(blob)
   }

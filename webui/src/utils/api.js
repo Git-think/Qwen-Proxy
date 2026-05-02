@@ -71,6 +71,13 @@ export async function refreshAllAccounts() {
   })
 }
 
+export async function setAccountDisabled(email, disabled) {
+  return apiFetch('/api/disableAccount', {
+    method: 'POST',
+    body: JSON.stringify({ email, disabled }),
+  })
+}
+
 /* ----- smart proxy pool ----- */
 
 export async function fetchProxies() {

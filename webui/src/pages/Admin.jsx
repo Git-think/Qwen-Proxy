@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchAccounts, addAccount, deleteAccount, refreshAccount, refreshAllAccounts, fetchProxies, addProxy, removeProxy } from '../utils/api'
+import { fetchAccounts, addAccount, deleteAccount, refreshAccount, refreshAllAccounts, setAccountDisabled, fetchProxies, addProxy, removeProxy } from '../utils/api'
 import { useToast } from '../hooks/useToast'
 import AccountCard from '../components/AccountCard'
 import StatsCard from '../components/StatsCard'
@@ -132,6 +132,24 @@ export default function Admin() {
     try {
       await deleteAccount(em)
       toast.success(`已删除 ${em}`)
+      loadAccounts()
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
+
+  const handleToggleDisabled = async (em, disabled) => {
+    try {
+      const res = await setAccountDisabled(em, disabled)
+      // surface the persistence path so the operator knows where the
+      // toggle landed (file/redis vs Vercel env vs in-memory only)
+      if (res?.sync?.synced) {
+        toast.success(`${disabled ? '已禁用' : '已启用'} ${em}（已同步到 Vercel）`)
+      } else if (res?.sync?.reason === 'redis_active') {
+        toast.success(`${disabled ? '已禁用' : '已启用'} ${em}（已写入 Redis）`)
+      } else {
+        toast.success(`${disabled ? '已禁用' : '已启用'} ${em}`)
+      }
       loadAccounts()
     } catch (err) {
       toast.error(err.message)
@@ -342,6 +360,7 @@ export default function Admin() {
                   account={account}
                   onRefresh={handleRefresh}
                   onDelete={handleDelete}
+                  onToggleDisabled={handleToggleDisabled}
                 />
               </div>
             ))}

@@ -4,7 +4,7 @@ const accountManager = require('../utils/account')
 const { logger } = require('../utils/logger')
 const { JwtDecode } = require('../utils/tools')
 const { adminKeyVerify } = require('../middlewares/authorization')
-const { syncProxiesToVercel } = require('../utils/vercel-sync')
+const { syncProxiesToVercel, syncDisabledAccountsToVercel } = require('../utils/vercel-sync')
 
 /**
  * GET /getAllAccounts - Get all accounts (paginated)
@@ -34,6 +34,7 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
         expires,
         tokenExpiry,
         isValid,
+        disabled: !!account.disabled,
         lastLoginError: account.lastLoginError || null,
       }
     })
@@ -151,6 +152,36 @@ router.post('/refreshAllAccounts', adminKeyVerify, async (req, res) => {
     })
   } catch (error) {
     logger.error('Failed to batch refresh account tokens', 'ACCOUNT', '', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+/**
+ * POST /disableAccount - Toggle the disabled flag on an account.
+ * Body: { email, disabled }
+ *
+ * Disabled accounts stay in the list (so the toggle is reversible
+ * without losing credentials) but the rotator skips them. Persistence
+ * decided automatically by data-save mode:
+ *   - file / redis: written via dataPersistence.saveAccount
+ *   - none + Vercel sync configured: full disabled-list pushed back to
+ *     the Vercel DISABLED_ACCOUNTS env var so it survives cold starts
+ *   - redis: short-circuits the Vercel push (already covered)
+ */
+router.post('/disableAccount', adminKeyVerify, async (req, res) => {
+  try {
+    const { email, disabled } = req.body || {}
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Missing email' })
+    }
+    const ok = await accountManager.setAccountDisabled(email, !!disabled)
+    if (!ok) {
+      return res.status(404).json({ error: `Account not found: ${email}` })
+    }
+    const sync = await syncDisabledAccountsToVercel(accountManager.getDisabledEmails())
+    res.json({ success: true, email, disabled: !!disabled, sync })
+  } catch (error) {
+    logger.error('Failed to toggle account disabled', 'ACCOUNT', '', error)
     res.status(500).json({ error: error.message })
   }
 })

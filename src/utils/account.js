@@ -40,6 +40,21 @@ class Account {
 
             await this.loadAccountTokens()
 
+            // Apply the operator-managed disabled list. config.disabledAccounts
+            // is the union of DISABLED_ACCOUNTS env + whatever was already
+            // persisted on the account row (file/redis preserve the flag).
+            // Operator can toggle via POST /api/disableAccount; the helper
+            // also pushes the list back to a Vercel env var for persistence
+            // on serverless deploys without redis.
+            if (Array.isArray(config.disabledAccounts) && config.disabledAccounts.length > 0) {
+                const envDisabled = new Set(config.disabledAccounts.map(s => String(s).trim().toLowerCase()))
+                for (const acc of this.accountTokens) {
+                    if (envDisabled.has(String(acc.email || '').toLowerCase())) {
+                        acc.disabled = true
+                    }
+                }
+            }
+
             // Best-effort: ensure every account has a bound proxy when a
             // pool is configured. Existing bindings are reused; new
             // accounts get one assigned on first use of the pool.
@@ -430,6 +445,41 @@ class Account {
             return true
         }
         return false
+    }
+
+    /**
+     * Toggle the disabled flag on an account. Disabled accounts stay in
+     * the list (so the toggle is reversible without losing credentials)
+     * but the rotator skips them. Persists the new state to file/redis
+     * when those modes are active.
+     * @param {string} email
+     * @param {boolean} disabled
+     * @returns {Promise<boolean>}
+     */
+    async setAccountDisabled(email, disabled) {
+        const account = this.accountTokens.find(t => t.email === email)
+        if (!account) return false
+        account.disabled = !!disabled
+        // Persist for file / redis modes; none mode is in-memory only.
+        try {
+            await this.dataPersistence.saveAccount(email, {
+                password: account.password,
+                token: account.token,
+                expires: account.expires,
+                disabled: !!disabled,
+            })
+        } catch { /* logged inside */ }
+        // Refresh rotator's view so the next pick honors the new flag.
+        this.accountRotator.setAccounts(this.accountTokens)
+        return true
+    }
+
+    /**
+     * Snapshot of currently-disabled emails (for env-var sync).
+     * @returns {string[]}
+     */
+    getDisabledEmails() {
+        return this.accountTokens.filter(a => a.disabled).map(a => a.email)
     }
 
     /**

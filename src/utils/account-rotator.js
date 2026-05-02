@@ -155,6 +155,11 @@ class AccountRotator {
     if (!account.token) {
       return false
     }
+    // Operator-disabled accounts stay in the list (so the toggle is
+    // reversible without losing credentials) but never get picked.
+    if (account.disabled) {
+      return false
+    }
 
     const failures = this.failureCounts.get(account.email) || 0
     if (failures >= this.maxFailures) {
