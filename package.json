@@ -1,6 +1,6 @@
 {
   "name": "qwen-proxy",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Qwen-Proxy — OpenAI / Anthropic / Gemini three-protocol gateway in front of chat.qwen.ai",
   "main": "src/server.js",
   "scripts": {
