@@ -7,6 +7,8 @@
 
 <p align="center">
   <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FGit-think%2FQwen-Proxy&env=API_KEY,ACCOUNTS&envDescription=API_KEY%3A%20API%E5%AF%86%E9%92%A5%EF%BC%8CACCOUNTS%3A%20%E8%B4%A6%E5%8F%B7(email%3Apassword)&project-name=qwen-proxy&repository-name=Qwen-Proxy"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+  &nbsp;
+  <a href="https://app.netlify.com/start/deploy?repository=https://github.com/Git-think/Qwen-Proxy"><img src="https://www.netlify.com/img/deploy/button.svg" alt="Deploy to Netlify" /></a>
 </p>
 
 <p align="center">
@@ -178,7 +180,9 @@ docker run -d -p 3000:3000 \
 
 ### Netlify 部署
 
-仓库自带 `netlify.toml`，关联 GitHub 后 Netlify 会自动：
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/Git-think/Qwen-Proxy)
+
+点按钮后 Netlify 会要求授权 GitHub、fork 仓库、选择团队，最后跳到 Site Configuration 页让你填环境变量。仓库自带 `netlify.toml`，构建会自动：
 - 安装根 + `webui/` 依赖，构建前端到 `webui/dist`
 - 把 `netlify/functions/api.js`（用 `serverless-http` 包 Express）作为 Functions 入口
 - 把所有 `/v1/*` `/v1beta/*` `/anthropic/*` `/api/*` `/verify` `/health` 重定向到该 Function，其余路径回退到 SPA `index.html`
