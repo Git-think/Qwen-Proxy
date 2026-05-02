@@ -220,6 +220,10 @@ Node.js 18+，先 `npm run build:webui` 再 `npm start` 即可。
 
 Tool calling 子系统的设计思路来自 **[CJackHwang/ds2api](https://github.com/CJackHwang/ds2api)**——一个用 prompt 注入 + DSML XML 解析让上游模型支持 OpenAI tools 协议的 Go 项目。本仓库参考了它的 DSML 标记选择、四级候选解析、流式 sieve 状态机思路并完整重写为 Node.js 实现，**未直接复用其代码**。感谢作者的开源工作给了我们一个可行参照。
 
+## 友链
+
+- **[Linux DO](https://linux.do)** —— 不一样的中文技术社区，本项目的灵感、反馈与折腾乐趣大多源自这里。
+
 ---
 
 ## 技术架构

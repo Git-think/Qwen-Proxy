@@ -46,7 +46,11 @@ export default function Sidebar({ collapsed, onToggle }) {
     fetch(API_ENDPOINTS.VERCEL_INFO)
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
-        if (data && data.isVercel) setIsVercel(true)
+        // Show the Vercel sync nav only when:
+        //   - we are actually running on Vercel, AND
+        //   - redis persistence is NOT configured (redis already covers
+        //     ACCOUNTS / PROXIES, making Vercel-sync redundant)
+        if (data && data.isVercel && !data.redisConfigured) setIsVercel(true)
       })
       .catch(() => {})
   }, [])
@@ -115,6 +119,21 @@ export default function Sidebar({ collapsed, onToggle }) {
 
       {/* Bottom actions */}
       <div className="p-2 border-t border-white/[0.06] space-y-1">
+        {/* Version badge — replaced at build time by Vite's `define`
+            from the root package.json. Helps operators verify which
+            release is actually deployed (esp. after triggering an
+            auto-rebuild via a version bump). */}
+        {!collapsed && (
+          <a
+            href="https://github.com/Git-think/Qwen-Proxy/releases"
+            target="_blank"
+            rel="noreferrer"
+            className="block px-3 py-1 text-[10px] font-mono text-slate-600 hover:text-slate-400 transition-colors text-center"
+            title="Click to view release notes"
+          >
+            v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}
+          </a>
+        )}
         <button
           onClick={onToggle}
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-all duration-200 w-full"

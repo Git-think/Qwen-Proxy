@@ -2,6 +2,8 @@ const express = require('express')
 const router = express.Router()
 const axios = require('axios')
 const { adminKeyVerify } = require('../middlewares/authorization')
+const redisClient = require('../utils/redis-client')
+const config = require('../config/index.js')
 const { logger } = require('../utils/logger')
 
 function getVercelConfig() {
@@ -27,6 +29,11 @@ router.get('/vercel/info', (req, res) => {
     hasToken: !!vercelToken,
     hasProjectId: !!projectId,
     hasTeamId: !!teamId,
+    // Redis-mode flag so the frontend can hide the Vercel sync nav when
+    // redis already covers persistence (no need for the operator to also
+    // mutate ACCOUNTS / PROXIES via the Vercel API).
+    redisConfigured: config.dataSaveMode === 'redis' && redisClient.isConfigured(),
+    dataSaveMode: config.dataSaveMode,
     // Non-secret identifiers — safe to expose so the UI can render them
     // for visual confirmation. Project ID is also visible in the dashboard
     // URL, and Team ID is exposed in account-level URLs, so neither is

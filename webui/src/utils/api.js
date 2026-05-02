@@ -71,6 +71,27 @@ export async function refreshAllAccounts() {
   })
 }
 
+/* ----- smart proxy pool ----- */
+
+export async function fetchProxies() {
+  const data = await apiFetch('/api/proxy/status')
+  return data.data || []
+}
+
+export async function addProxy(url) {
+  return apiFetch('/api/proxy/add', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  })
+}
+
+export async function removeProxy(url) {
+  return apiFetch('/api/proxy', {
+    method: 'DELETE',
+    body: JSON.stringify({ url }),
+  })
+}
+
 /**
  * Stream chat with support for reasoning_content (thinking) and content (answer)
  * @param {Array} messages

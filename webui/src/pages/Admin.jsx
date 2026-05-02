@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchAccounts, addAccount, deleteAccount, refreshAccount, refreshAllAccounts } from '../utils/api'
+import { fetchAccounts, addAccount, deleteAccount, refreshAccount, refreshAllAccounts, fetchProxies, addProxy, removeProxy } from '../utils/api'
 import { useToast } from '../hooks/useToast'
 import AccountCard from '../components/AccountCard'
 import StatsCard from '../components/StatsCard'
@@ -13,6 +13,11 @@ export default function Admin() {
   const [password, setPassword] = useState('')
   const [batchText, setBatchText] = useState('')
   const [refreshingAll, setRefreshingAll] = useState(false)
+  // smart proxy pool state
+  const [proxies, setProxies] = useState([])
+  const [proxiesLoaded, setProxiesLoaded] = useState(false)
+  const [newProxyUrl, setNewProxyUrl] = useState('')
+  const [proxyBusy, setProxyBusy] = useState(false)
   const { toast } = useToast()
 
   const loadAccounts = useCallback(async () => {
@@ -28,7 +33,54 @@ export default function Admin() {
 
   useEffect(() => {
     loadAccounts()
+    loadProxies()
   }, [loadAccounts])
+
+  const loadProxies = useCallback(async () => {
+    try {
+      const list = await fetchProxies()
+      setProxies(Array.isArray(list) ? list : [])
+    } catch (err) {
+      // 静默：当用户没用代理池时这条接口不算关键
+      setProxies([])
+    } finally {
+      setProxiesLoaded(true)
+    }
+  }, [])
+
+  const handleAddProxy = async (e) => {
+    e.preventDefault()
+    const url = newProxyUrl.trim()
+    if (!url) return
+    setProxyBusy(true)
+    try {
+      const res = await addProxy(url)
+      if (res.sync && res.sync.synced) {
+        toast.success(`已添加并同步到 Vercel 环境变量`)
+      } else if (res.sync && res.sync.reason === 'redis_active') {
+        toast.success(`已添加（持久化到 Redis）`)
+      } else {
+        toast.success(`已添加 ${url}`)
+      }
+      setNewProxyUrl('')
+      await loadProxies()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setProxyBusy(false)
+    }
+  }
+
+  const handleRemoveProxy = async (url) => {
+    if (!confirm(`确定移除代理 ${url}？`)) return
+    try {
+      await removeProxy(url)
+      toast.success(`已移除`)
+      loadProxies()
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
 
   const handleAddSingle = async (e) => {
     e.preventDefault()
@@ -293,6 +345,89 @@ export default function Admin() {
                 />
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Smart proxy pool — only renders the section once we've fetched
+            at least once. The pool is optional; an empty list is fine. */}
+        {proxiesLoaded && (
+          <div className="mt-10 animate-fade-in">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-display font-semibold text-white">智能代理池</h2>
+                <p className="text-xs text-slate-500 mt-0.5">SOCKS5 / HTTP / HTTPS 代理；账号绑定 + 故障转移 + 持久化</p>
+              </div>
+              <span className="text-xs text-slate-500">{proxies.length} 个代理</span>
+            </div>
+
+            {/* Add proxy form */}
+            <form onSubmit={handleAddProxy} className="glass-card p-4 mb-4 flex items-center gap-2">
+              <input
+                type="text"
+                value={newProxyUrl}
+                onChange={(e) => setNewProxyUrl(e.target.value)}
+                placeholder="socks5://1.2.3.4:1080  或  http://user:pass@host:port"
+                className="input-field flex-1 text-sm py-2 font-mono"
+                disabled={proxyBusy}
+              />
+              <button
+                type="submit"
+                disabled={proxyBusy || !newProxyUrl.trim()}
+                className="btn-primary text-sm py-2 px-4 disabled:opacity-50"
+              >
+                {proxyBusy ? '添加中...' : '添加'}
+              </button>
+            </form>
+
+            {/* Existing proxies */}
+            {proxies.length === 0 ? (
+              <div className="glass-card p-6 text-center text-sm text-slate-500">
+                暂无代理。可通过 <code className="text-accent-glow font-mono">PROXIES</code> 环境变量批量初始化，或在上面输入框逐条添加。
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {proxies.map((p) => {
+                  const dotClass = p.status === 'available'
+                    ? 'bg-emerald-400'
+                    : p.status === 'failed'
+                    ? 'bg-red-400'
+                    : 'bg-slate-500'
+                  const statusLabel = p.status === 'available'
+                    ? '可用'
+                    : p.status === 'failed'
+                    ? '失败'
+                    : '未测试'
+                  const statusClass = p.status === 'available'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : p.status === 'failed'
+                    ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                    : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                  return (
+                    <div key={p.url} className="glass-card p-3 flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotClass}`} />
+                      <code className="text-xs font-mono text-slate-300 flex-1 truncate" title={p.url}>
+                        {p.host || p.url}
+                      </code>
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${statusClass}`}>
+                        {statusLabel}
+                      </span>
+                      <span className="text-xs text-slate-500 hidden sm:inline">
+                        {p.assignedAccounts?.length || 0} 账号
+                      </span>
+                      <button
+                        onClick={() => handleRemoveProxy(p.url)}
+                        className="p-1.5 rounded text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                        title="移除"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -4,6 +4,11 @@ const config = require('./config/index.js')
 const cors = require('cors')
 const { logger } = require('./utils/logger')
 const { initSsxmodManager } = require('./utils/ssxmod-manager')
+// Single source of truth for the version string. Bumping this in the
+// root package.json automatically (a) triggers the release.yml workflow
+// because it watches paths: package.json, and (b) gets baked into the
+// frontend bundle by Vite's define hook in webui/vite.config.js.
+const pkg = require('../package.json')
 
 const modelsRouter = require('./routes/models.js')
 const chatRouter = require('./routes/chat.js')
@@ -26,8 +31,8 @@ app.use(cors())
 app.get('/', (req, res) => {
   res.json({
     status: 'ok',
-    service: 'qwen2api',
-    version: '1.0.0',
+    service: 'qwen-proxy',
+    version: pkg.version,
     isVercel: config.isServerless
   })
 })

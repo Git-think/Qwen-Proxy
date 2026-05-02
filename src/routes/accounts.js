@@ -4,6 +4,7 @@ const accountManager = require('../utils/account')
 const { logger } = require('../utils/logger')
 const { JwtDecode } = require('../utils/tools')
 const { adminKeyVerify } = require('../middlewares/authorization')
+const { syncProxiesToVercel } = require('../utils/vercel-sync')
 
 /**
  * GET /getAllAccounts - Get all accounts (paginated)
@@ -172,6 +173,12 @@ router.get('/proxy/status', adminKeyVerify, async (req, res) => {
 /**
  * POST /proxy/add - Add a proxy URL to the pool at runtime (admin).
  * Body: { url: 'socks5://...' | 'http://...' | 'https://...' }
+ *
+ * After updating the in-memory pool we also push the latest list back
+ * to the Vercel project's PROXIES env var (if Vercel sync is configured
+ * AND we're not already on redis — see vercel-sync.js for the gate).
+ * This lets a Vercel cold start pick up the same proxy set instead of
+ * resetting to whatever was last manually set in the dashboard.
  */
 router.post('/proxy/add', adminKeyVerify, async (req, res) => {
   try {
@@ -183,7 +190,9 @@ router.post('/proxy/add', adminKeyVerify, async (req, res) => {
       return res.status(400).json({ error: 'Proxy pool not initialized' })
     }
     const ok = await accountManager.proxyPool.addProxy(url.trim())
-    res.json({ success: ok, url })
+    const proxies = accountManager.proxyPool.list().map(p => p.url)
+    const sync = await syncProxiesToVercel(proxies)
+    res.json({ success: ok, url, sync })
   } catch (error) {
     logger.error('Failed to add proxy', 'PROXY', '', error)
     res.status(500).json({ error: error.message })
@@ -193,6 +202,8 @@ router.post('/proxy/add', adminKeyVerify, async (req, res) => {
 /**
  * DELETE /proxy - Remove a proxy from the pool (admin).
  * Body: { url }
+ *
+ * Same Vercel-env-sync semantics as POST /proxy/add.
  */
 router.delete('/proxy', adminKeyVerify, async (req, res) => {
   try {
@@ -204,7 +215,9 @@ router.delete('/proxy', adminKeyVerify, async (req, res) => {
       return res.status(400).json({ error: 'Proxy pool not initialized' })
     }
     const ok = await accountManager.proxyPool.removeProxy(url)
-    res.json({ success: ok, url })
+    const proxies = accountManager.proxyPool.list().map(p => p.url)
+    const sync = await syncProxiesToVercel(proxies)
+    res.json({ success: ok, url, sync })
   } catch (error) {
     logger.error('Failed to remove proxy', 'PROXY', '', error)
     res.status(500).json({ error: error.message })
