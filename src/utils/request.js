@@ -41,6 +41,16 @@ async function resolveAccountProxy(email) {
  * @returns {Promise<Object>} Response result
  */
 const sendChatRequest = async (body) => {
+    // Wait for the (lazy, async) account-manager init before doing
+    // anything else. Without this, on Vercel's per-request isolated
+    // function instances, requests that arrive before _initialize()
+    // finishes its first signin call see token === '' and bail out
+    // with "Cannot get valid access token", even though the very next
+    // request (a few hundred ms later, after signin completes) succeeds.
+    if (typeof accountManager.ensureInitialized === 'function') {
+        try { await accountManager.ensureInitialized() } catch { /* fall through */ }
+    }
+
     const MAX_RETRIES = Math.max(1, config.proxyMaxRetries || 3)
     let lastError = null
 
